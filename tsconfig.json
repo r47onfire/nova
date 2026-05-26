@@ -13,8 +13,7 @@
         "module": "ESNext",
         "types": [
             "bun",
-            "node",
-            "prismjs",
+            "node"
         ],
         "lib": [
             "esnext",

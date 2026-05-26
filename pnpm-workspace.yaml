@@ -1,2 +1,3 @@
 allowBuilds:
   bun: true
+  '@r47onfire/game-math': true

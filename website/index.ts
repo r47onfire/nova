@@ -1,2 +1,5 @@
-import hi from "../src";
-hi();
+import Nova from "../src";
+
+const game = new Nova({
+});
+
