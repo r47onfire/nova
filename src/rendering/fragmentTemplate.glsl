@@ -4,7 +4,6 @@ in vec2 v_pos, v_uv;
 in vec4 v_color;
 out vec4 fragColor;
 uniform sampler2D u_tex;
-uniform bool aaa;
 vec4 def_frag() {
     vec4 c = vec4(1.f);
     if(v_uv.x >= 0.0f && v_uv.x <= 1.0f && v_uv.y >= 0.0f && v_uv.y <= 1.0f)
