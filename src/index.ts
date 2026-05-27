@@ -3,7 +3,7 @@ import { InputManager, InputManagerOptions } from "./input/InputManager";
 import { TimeController } from "./loop/TimeController";
 import { Mesh } from "./rendering/Mesh";
 import { Renderer, RendererOptions } from "./rendering/Renderer";
-import { BlendMode } from "./rendering/Shader";
+import { BlendMode, UniformType } from "./rendering/Shader";
 import { DEFAULT_VERTEX_FORMAT } from "./rendering/vertex";
 export * from "@r47onfire/game-math";
 
@@ -24,16 +24,33 @@ export default class Nova {
         // Update systems
         // Update root object
         // Draw
-        this.renderer.draw(() => {
+        this.renderer.doFrame(() => {
             this.renderer.drawMesh(new Mesh(
                 DEFAULT_VERTEX_FORMAT,
                 [
-                    { x: 100, y: 100, u: -1, v: -1 },
-                    { x: 200, y: 100, u: -1, v: -1 },
-                    { x: 100, y: 200, u: -1, v: -1 },
-                    { x: 200, y: 200, u: -1, v: -1 },
+                    { x: 100, y: 100, r: 255, g: 0, b: 0 }, // topleft
+                    { x: 200, y: 100, r: 0, g: 255, b: 0 }, // topright
+                    { x: 200, y: 200, r: 0, g: 0, b: 255 }, // bottomright
+                    { x: 100, y: 200 }, // bottomleft
                 ],
-                [0, 1, 2, 1, 2, 3],
+                [0, 1, 3, 1, 2, 3],
+                "null",
+                COLOR_WHITE,
+                1,
+                null,
+                {},
+                BlendMode.NORMAL,
+                false
+            ));
+            this.renderer.drawMesh(new Mesh(
+                DEFAULT_VERTEX_FORMAT,
+                [
+                    { x: 300, y: 100, r: 255, g: 0, b: 0 }, // topleft
+                    { x: 500, y: 100, r: 0, g: 255, b: 0 }, // topright
+                    { x: 500, y: 200, r: 0, g: 0, b: 255 }, // bottomright
+                    { x: 300, y: 200 }, // bottomleft
+                ],
+                [0, 1, 3, 1, 2, 3],
                 "null",
                 COLOR_WHITE,
                 1,

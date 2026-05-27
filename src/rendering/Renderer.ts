@@ -123,7 +123,7 @@ export class Renderer {
         this.gl = gl;
 
         this.#setFuncs = {
-            [StackKind.TRANSFORM](mat) { },
+            [StackKind.TRANSFORM]() { },
             [StackKind.TEXTURE_2D](tex) {
                 gl.bindTexture(gl.TEXTURE_2D, tex);
             },
@@ -175,10 +175,10 @@ export class Renderer {
         const { drawingBufferWidth: w, drawingBufferHeight: h } = this.gl;
         this.#frameBuffer?.free();
         const fbTex = new Texture(this, w, h, TexFilter.NEAREST, TexWrapMode.CLAMP);
-        this.#namedTextures.set(SCREEN_TEX, [fbTex, new Quad(0, 0, w, h)]);
+        this.#namedTextures.set(SCREEN_TEX, [fbTex, new Quad(0, 0, 1, 1)]);
         this.#frameBuffer = new FrameBuffer(this, fbTex);
-        this.#width = w / pixelDensity / scale;
-        this.#height = h / pixelDensity / scale;
+        this.#width = canvas.offsetWidth / scale;
+        this.#height = canvas.offsetHeight / scale;
     }
     push<K extends StackKind>(kind: K, entry: StackElementType<K>) {
         (this.#stacks[kind] ??= [] as any[]).push(entry);
@@ -218,16 +218,17 @@ export class Renderer {
         this.drawCalls = this.#drawCalls;
         this.#frameBuffer.unbind();
         const gl = this.gl;
-        const { drawingBufferWidth: w, drawingBufferHeight: h } = gl;
-        gl.viewport(0, 0, w, h);
+        const { drawingBufferWidth, drawingBufferHeight } = gl;
+        gl.viewport(0, 0, drawingBufferWidth, drawingBufferHeight);
         // Draw post effect shader(s)
+        const w = this.#width, h = this.#height;
         this.drawMesh(new Mesh(
             DEFAULT_VERTEX_FORMAT,
             [
-                { x: 0, y: 0, u: 0, v: h },
-                { x: w, y: 0, u: w, v: h },
-                { x: 0, y: h, u: 0, v: 0 },
-                { x: w, y: h, u: 0, v: 0 },
+                { x: 0, y: 0, u: 0, v: 1 }, // topleft
+                { x: w, y: 0, u: 1, v: 1 }, // topright
+                { x: w, y: h, u: 1, v: 0 }, // bottomright
+                { x: 0, y: h, u: 0, v: 0 }, // bottomleft
             ],
             [0, 1, 3, 1, 2, 3],
             SCREEN_TEX,
@@ -240,7 +241,7 @@ export class Renderer {
         ));
         this.#flush();
     }
-    draw(frameCb: () => void) {
+    doFrame(frameCb: () => void) {
         this.#startFrame();
         frameCb();
         this.#endFrame();
@@ -264,22 +265,30 @@ export class Renderer {
     #indexQueue: number[] = [];
     #chunkLengthsQueue: [vertices: number, indices: number][] = [];
     drawMesh(mesh: Mesh) {
-        if (!(mesh.vertices.length && mesh.indices.length)) return;
+        const { vertices, indices, tex, format } = mesh;
+        if (!(vertices.length && indices.length)) return;
         // If it's the same everything, just append to the current queue
         // Otherwise, flush and start a new one
         if (this.#currentMeshForFormat && !this.#sameMeshFormat(mesh, this.#currentMeshForFormat)) this.#flush();
         this.#currentMeshForFormat = mesh;
-        const texQuad = this.#namedTextures.get(mesh.tex!)?.[1] ?? new Quad(0, 0, 0, 0);
+        const texQuad = this.#namedTextures.get(tex!)?.[1] ?? new Quad(0, 0, 1, 1);
         const startVLength = this.#vertexDataQueue.length;
-        for (var vertex of mesh.vertices) {
-            for (var param of mesh.format) {
-                const data = param.fields.map((f, i) => vertex[f] ?? (isNumber(param.fill) ? param.fill : param.fill?.[i] ?? 0));
-                param.transform?.(this, mesh, texQuad, data as any);
-                this.#vertexDataQueue.push(...data);
+        const data: number[] = [];
+        for (var v = 0; v < vertices.length; v++) {
+            const vertex = vertices[v]!;
+            for (var p = 0; p < format.length; p++) {
+                const { fields, fill, transform } = format[p]!;
+                for (var i = 0; i < fields.length; i++) {
+                    const field = fields[i]!;
+                    data.push(vertex[field] ?? (isNumber(fill) ? fill : fill?.[i] ?? 0));
+                }
+                transform?.call(format, this, mesh, texQuad, data as any);
+                for (var i = 0; i < data.length; i++) this.#vertexDataQueue.push(data[i]!);
+                data.length = 0;
             }
         }
-        this.#indexQueue.push(...mesh.indices);
-        this.#chunkLengthsQueue.push([this.#vertexDataQueue.length - startVLength, mesh.indices.length]);
+        this.#indexQueue.push(...indices);
+        this.#chunkLengthsQueue.push([this.#vertexDataQueue.length - startVLength, indices.length]);
     }
     #flush() {
         if (!this.#currentMeshForFormat) return;
@@ -322,8 +331,9 @@ export class Renderer {
                 indicesIndex += iLen;
             }
             gl.bufferSubData(ARRAY_BUFFER, 0, new Float32Array(verticesChunk));
-            gl.bufferSubData(ELEMENT_ARRAY_BUFFER, 0, new Uint32Array(indicesChunk));
+            gl.bufferSubData(ELEMENT_ARRAY_BUFFER, 0, new Uint16Array(indicesChunk));
             gl.drawElements(TRIANGLES, indicesChunk.length, UNSIGNED_SHORT, 0);
+            this.#drawCalls++;
             verticesChunk.length = indicesChunk.length = 0;
         }
         chunkLengths.length = allVertices.length = allIndices.length = 0;

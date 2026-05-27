@@ -33,36 +33,38 @@ export class Texture {
         this.width = w;
         this.height = h;
 
+        const { LINEAR, NEAREST, REPEAT, CLAMP_TO_EDGE, TEXTURE_2D, RGBA, UNSIGNED_BYTE, TEXTURE_MIN_FILTER, TEXTURE_MAG_FILTER, TEXTURE_WRAP_S, TEXTURE_WRAP_T, UNPACK_PREMULTIPLY_ALPHA_WEBGL } = gl;
+
         const nFilter = {
-            [TexFilter.LINEAR]: gl.LINEAR,
-            [TexFilter.NEAREST]: gl.NEAREST,
+            [TexFilter.LINEAR]: LINEAR,
+            [TexFilter.NEAREST]: NEAREST,
         }[filter];
 
         const nWrapMode = {
-            [TexWrapMode.WRAP]: gl.REPEAT,
-            [TexWrapMode.CLAMP]: gl.CLAMP_TO_EDGE,
+            [TexWrapMode.WRAP]: REPEAT,
+            [TexWrapMode.CLAMP]: CLAMP_TO_EDGE,
         }[wrapMode];
 
         this.bind();
         if (w && h) {
             gl.texImage2D(
-                gl.TEXTURE_2D,
+                TEXTURE_2D,
                 0,
-                gl.RGBA,
+                RGBA,
                 w,
                 h,
                 0,
-                gl.RGBA,
-                gl.UNSIGNED_BYTE,
+                RGBA,
+                UNSIGNED_BYTE,
                 null,
             );
         }
 
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, nFilter);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, nFilter);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, nWrapMode);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, nWrapMode);
-        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.texParameteri(TEXTURE_2D, TEXTURE_MIN_FILTER, nFilter);
+        gl.texParameteri(TEXTURE_2D, TEXTURE_MAG_FILTER, nFilter);
+        gl.texParameteri(TEXTURE_2D, TEXTURE_WRAP_S, nWrapMode);
+        gl.texParameteri(TEXTURE_2D, TEXTURE_WRAP_T, nWrapMode);
+        gl.pixelStorei(UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
 
         this.unbind();
     }

@@ -63,7 +63,7 @@ export class Shader {
         this.#vertexFormat = fmt;
         renderer.addCleanup(() => this.free());
         const gl = this.#renderer.gl;
-        const {VERTEX_SHADER, FRAGMENT_SHADER, LINK_STATUS, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, DYNAMIC_DRAW, FLOAT} = gl;
+        const { VERTEX_SHADER, FRAGMENT_SHADER, LINK_STATUS, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, DYNAMIC_DRAW, FLOAT } = gl;
         if (this.#vertexFormat.length > gl.getParameter(gl.MAX_VERTEX_ATTRIBS)) {
             throw new Error("too many attributes");
         }
@@ -99,8 +99,8 @@ export class Shader {
 
         const vao = this.#glVAO = gl.createVertexArray()!;
         const format = this.#vertexFormat;
-        const stride = this.stride = format.reduce((acc, param) => acc + param.fields.length * 4, 0); // * 4 because float32 is 4 bytes each
-        gl.bindVertexArray(vao);
+        const stride = this.stride = format.reduce((acc, param) => acc + param.fields.length, 0); // our stride is in floats, not bytes
+        this.#renderer.push(StackKind.VAO, vao);
         const vbo = this.#glVBO = gl.createBuffer();
         const ibo = this.#glIBO = gl.createBuffer();
         gl.bindBuffer(ARRAY_BUFFER, vbo);
@@ -112,13 +112,13 @@ export class Shader {
             // For VAO
             const { attr, fields } = format[i]!;
             gl.enableVertexAttribArray(gl.getAttribLocation(prog, attr));
-            gl.vertexAttribPointer(i, fields.length, FLOAT, false, stride, offset);
-            offset += fields.length * 4;
+            gl.vertexAttribPointer(i, fields.length, FLOAT, false, stride * 4, offset * 4); // * 4 because WebGL stride is in bytes, not floats
+            offset += fields.length;
             // For shader
             gl.bindAttribLocation(prog, i, attr);
         }
 
-        gl.bindVertexArray(null);
+        this.#renderer.pop(StackKind.VAO);
     }
 
     bind() {

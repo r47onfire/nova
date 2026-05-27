@@ -17,7 +17,7 @@ export interface VertexParameter<N extends number> {
     /** The value to fill with if the field is not found. Default is 0. */
     fill?: number | Tuple<number, N>;
     /** Transforms the value before it gets added to the queue. The data parameter is an inout parameter, should be modified in place. */
-    transform?(renderer: Renderer, mesh: Mesh, quad: Quad, data: Tuple<number, N>): void;
+    transform?(renderer: Readonly<Renderer>, mesh: Readonly<Mesh>, quad: Readonly<Quad>, data: Tuple<number, N>): void;
 }
 
 export type VertexFormat = (VertexParameter<1> | VertexParameter<2> | VertexParameter<3> | VertexParameter<4>)[];
@@ -38,10 +38,10 @@ export const DEFAULT_VERTEX_FORMAT: VertexFormat = [
     {
         attr: "a_uv",
         fields: ["u", "v"],
-        fill: Infinity, // we don't know the texture size, so just use Infinity to get the bottom right since it's set to clamp
+        fill: -1, // -1 == OOB, for primitives that don't set uv
         transform(_renderer, _mesh, quad, data) {
-            data[0] += quad.x;
-            data[1] += quad.y;
+            data[0] = quad.x + data[0] * quad.w;
+            data[1] = quad.y + data[1] * quad.h;
         },
     } satisfies VertexParameter<2>,
     {
@@ -49,14 +49,12 @@ export const DEFAULT_VERTEX_FORMAT: VertexFormat = [
         fields: ["r", "g", "b", "a"],
         fill: [255, 255, 255, 1],
         transform(_renderer, mesh, _quad, data) {
-            // Inline form of Color_mul()
-            data[0] *= mesh.color.r / 255;
-            data[1] *= mesh.color.g / 255;
-            data[2] *= mesh.color.b / 255;
+            // Multiply the two and then normalize to 0-1
+            data[0] *= mesh.color.r / 255 / 255;
+            data[1] *= mesh.color.g / 255 / 255;
+            data[2] *= mesh.color.b / 255 / 255;
             // Opacity is already normalized to 0-1
             data[3] *= mesh.opacity;
         }
     } satisfies VertexParameter<4>,
 ];
-
-export const getVertexFormatStride = (format: VertexFormat) => format.reduce((sum, param) => sum + param.fields.length, 0) * 4;
