@@ -304,6 +304,7 @@ export class Renderer {
             screensize: [UniformType.VEC2, new Vec2(this.#width, this.#height)],
             camera: [UniformType.MAT4, fixed ? M4_IDENTITY : this.#camMatrix],
             transform: [UniformType.MAT4, M4_IDENTITY],
+            view: [UniformType.MAT4, M4_IDENTITY],
             u_tex: [UniformType.INT, 0],
         });
         theTexture?.bind();

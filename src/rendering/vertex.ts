@@ -26,7 +26,7 @@ const SCRATCH_POINT = new Vec2;
 export const DEFAULT_VERTEX_FORMAT: VertexFormat = [
     {
         attr: "a_pos",
-        fields: ["x", "y"],
+        fields: ["x", "y", "z"],
         fill: 0,
         transform(renderer, _mesh, _quad, data) {
             Vec2_set(SCRATCH_POINT, data[0], data[1]);
@@ -34,7 +34,7 @@ export const DEFAULT_VERTEX_FORMAT: VertexFormat = [
             data[0] = SCRATCH_POINT.x;
             data[1] = SCRATCH_POINT.y;
         }
-    } satisfies VertexParameter<2>,
+    } satisfies VertexParameter<3>,
     {
         attr: "a_uv",
         fields: ["u", "v"],
