@@ -3,17 +3,21 @@ export interface InputManagerOptions {
 
 }
 
+export type InputEvents = {
+
+};
+
 /**
  * Handles getting input from all sources and firing input events
  *
- * (e.g. key events, mouse events, gamepad events, window resize, hide/show, etc)
+ * (e.g. key events, mouse events, gamepad events, hide/show, etc)
  */
 export class InputManager {
-    #eventQueue: [string, any][] = [];
-    constructor(options: InputManagerOptions) {
+    constructor(
+        options: InputManagerOptions,
+        canvas: HTMLCanvasElement,
+        outputFunc: <N extends keyof InputEvents>(name: N, value: InputEvents[N]) => void,
+    ) {
 
-    }
-    queue(event: string, data?: any) {
-        this.#eventQueue.push([event, data]);
     }
 }

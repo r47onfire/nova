@@ -1,9 +1,9 @@
 import { Color, Mat23, Mat4, Mat4_from_Mat23, Vec2, Vec3 } from "@r47onfire/game-math";
-import { keys } from "lib0/object";
 import fragTemplate from "./fragmentTemplate.glsl";
 import { Renderer, StackKind } from "./Renderer";
 import { DEFAULT_VERTEX_FORMAT, VertexFormat } from "./vertex";
 import vertTemplate from "./vertexTemplate.glsl";
+
 export enum UniformType {
     FLOAT,
     FLOAT_ARRAY,
@@ -133,7 +133,7 @@ export class Shader {
 
     send(uniforms: Uniforms) {
         const gl = this.#renderer.gl;
-        for (var name of keys(uniforms)) {
+        for (const name in uniforms) {
             const uniform = uniforms[name]!, type = uniform[0]
             const loc = gl.getUniformLocation(this.#glProgram, name);
             switch (type) {

@@ -1,0 +1,445 @@
+import { Color, Mat23, Mat23_copyFrom, Mat23_getRotation, Mat23_getScale, Mat23_inverse, Mat23_rotateSelf, Mat23_scaleSelfV, Mat23_skewSelfV, Mat23_transformPointV_m, Mat23_translateSelfV, Vec2, Vec2_copy, Vec2_invScale, Vec2_scale_m } from "@r47onfire/game-math";
+import { isArray, last } from "lib0/array";
+import { stringify } from "lib0/json";
+import Nova from "../..";
+import { EventDispatcher, EventSubscriptionController } from "../../events";
+import { Renderer } from "../../rendering/Renderer";
+import { BlendMode, Uniforms } from "../../rendering/Shader";
+import { Stencil } from "../../rendering/stencil";
+import { allCompKeys, AlreadyBoundComp, Comp, getPropertyDescriptor, isCompDescriptor, type CompID } from "../components/Comp";
+import { type GameObjEvents } from "./GameObjEvents";
+import { type GameObj } from "./GameObjType";
+import { nextTransformVersion, nextTreeIndex, TRANSFORM_VERSION_MANAGER_SYMBOL, transformNeedsUpdate } from "./VersionManager";
+
+export type Tag = `#${string}:${string}`;
+
+const currentMaking: GameObj[] = [];
+
+var id = 1;
+
+export class GameObjRaw extends EventDispatcher<GameObjEvents> {
+    id: number | null;
+    readonly GAME: Nova;
+    name: string | undefined;
+    constructor(
+        game: Nova,
+        parent: GameObj,
+        id: number,
+        comps: Comp[],
+        tags: Tag[],
+    ) {
+        super();
+        this.GAME = game;
+        this.id = id;
+        currentMaking.push(this);
+        try {
+            // Add comp ids first since they're all getting added simultaneously
+            for (const comp of comps) {
+                this.#compIDs.add(comp.id);
+            }
+            for (const comp of comps) {
+                this.use(comp);
+            }
+            for (const tag of tags) {
+                this.tag(tag);
+            }
+        } finally {
+            currentMaking.pop();
+        }
+        this.parent = parent;
+        // Run global events first, so things that listen for onAdd()
+        // see the object with *only* comps added during make(),
+        // and *then* run the comps' add() which may add other comps
+        // and trigger onUse()
+        game.emit("add", this);
+        this.emit("add");
+    }
+    #parent!: GameObj | null;
+    #children: GameObj[] = [];
+    get children(): readonly GameObj[] { return this.#children; }
+    set parent(newParent: GameObj) {
+        if (this.id === null) this.GAME.bluescreen("can't re-parent destroyed object");
+        if (this.#parent === newParent) return; // noop
+        if (this.#parent) {
+            const c: GameObj[] = this.#parent.#children;
+            const i = c.indexOf(this);
+            if (i >= 0) c.splice(i, 1);
+        }
+        if (newParent) {
+            const oldPaused = this.isPaused();
+            const oldHidden = this.isHidden();
+            (this.#parent = newParent).#children.push(this);
+            this.#dirtyTransform();
+            this.#pausedChanged(oldPaused, this.isPaused());
+            this.#hiddenChanged(oldHidden, this.isHidden());
+        }
+    }
+    setParent(newParent: GameObj, keepPosition = false, keepAngle = false, keepScale = false) {
+        if (this.#parent === newParent) return;
+        const oldTransform = this.#parent!.#transformMatrix;
+        const newTransform = newParent.#transformMatrix;
+        if (keepPosition) {
+            const p = this.pos;
+            Mat23_transformPointV_m(oldTransform, p, p);
+            Mat23_transformPointV_m(Mat23_inverse(newTransform), p, p);
+        }
+        if (keepAngle) {
+            this.angle += Mat23_getRotation(newTransform) - Mat23_getRotation(oldTransform);
+        }
+        if (keepScale) {
+            const s = this.scale;
+            Vec2_scale_m(s, Vec2_invScale(Mat23_getScale(oldTransform), Mat23_getScale(newTransform)), s);
+        }
+        this.parent = newParent;
+    }
+    get parent() { return this.#parent!; }
+    #paused = false;
+    #hidden = false;
+    get paused() { return this.#paused; }
+    set paused(value) { const old = this.#paused; this.#pausedChanged(old, this.#paused = value); }
+    get hidden() { return this.#hidden; }
+    set hidden(value) { const old = this.#hidden; this.#hiddenChanged(old, this.#hidden = value); }
+    #pausedChanged(oldValue: boolean, newValue: boolean) {
+        if (oldValue === newValue) return;
+        const eventName = newValue ? "pause" : "unpause";
+        const recurse = (obj: GameObj, first = false) => {
+            obj.emit(eventName);
+            this.GAME.emit(eventName, obj);
+            if (obj.paused && !first) return;
+            obj.children.forEach(c => recurse(c));
+        };
+        recurse(this, true);
+    }
+    #hiddenChanged(oldValue: boolean, newValue: boolean) {
+        if (oldValue === newValue) return;
+        const eventName = newValue ? "hide" : "show";
+        const recurse = (obj: GameObj, first = false) => {
+            obj.emit(eventName);
+            this.GAME.emit(eventName, obj);
+            if (obj.hidden && !first) return;
+            obj.children.forEach(c => recurse(c));
+        };
+        recurse(this, true);
+    }
+    isPaused(): boolean {
+        return this.#paused || (this.#parent?.isPaused() ?? false);
+    }
+    isHidden(): boolean {
+        return this.#hidden || (this.#parent?.isHidden() ?? false);
+    }
+    #tags = new Set<Tag>();
+    get tags() { return this.#tags; }
+    add<T extends Comp[]>(comps: [...T], tags: Tag[]): GameObj<T> {
+        if (this.id === null) this.GAME.bluescreen("can't add child to destroyed object");
+        return new GameObjRaw(this.GAME, this, id++, comps, tags) as GameObj<T>;
+    }
+    readd<T>(obj: GameObj<T>): GameObj<T> {
+        const c = this.#children;
+        const idx = c.indexOf(obj);
+        if (idx >= 0) {
+            c.splice(idx, 1);
+            c.push(obj);
+        }
+        return obj;
+    }
+    destroy() {
+        this.parent = null as any;
+        this.id = null;
+        this.#compStates.forEach(c => this.unuse(c.id));
+        this.GAME.emit("destroy", this);
+        this.emit("destroy");
+        while (this.#children.length) this.#children.pop()!.destroy();
+    }
+    removeAll(tag?: Tag) {
+        (tag ? this.get(tag) : this.#children.slice()).forEach(c => c.destroy());
+    }
+    exists() {
+        return this.id !== null && this.#parent !== null;
+    }
+    isAncestorOf(obj: GameObj): boolean {
+        const parent = obj.parent;
+        return parent ? parent === this || this.isAncestorOf(parent) : false;
+    }
+    get(tag: Tag, recurse = false): GameObj[] {
+        return this.#children.flatMap(c => {
+            const children = recurse ? c.get(tag, recurse) : [];
+            return c.is(tag) ? [c, ...children] : children;
+        });
+    }
+    #drawLayerIndex!: number;
+    #layerIndex!: number;
+    update(dt: number) {
+        if (this.paused) return;
+        this.emit("update", dt);
+        this.#drawLayerIndex = this.#layerIndex ?? (this.#parent ? this.#parent.#drawLayerIndex : this.GAME.layers.defaultIndex);
+        this.#children.slice().forEach(c => c.update(dt));
+        this.#compStates.forEach(c => c.update?.(dt));
+        // TODO: sync appearance to meshes
+    }
+    drawSelf(renderer: Renderer) {
+        this.#compStates.forEach(c => c.draw(renderer));
+        this.emit("draw", renderer);
+    }
+    drawTree(renderer: Renderer) {
+        if (this.hidden) return;
+        const objects: GameObj[] = [];
+        this.#children.forEach(c => {
+            if (!c.hidden) c.#collect(objects);
+        });
+        objects.sort((o1, o2) => {
+            return (o1.#drawLayerIndex - o2.#drawLayerIndex) || (o1.zIndex ?? 0) - (o2.zIndex ?? 0);
+        });
+        const stencil = this.stencil;
+        if (stencil !== Stencil.NONE) {
+            renderer.drawStenciled(stencil, () => {
+                renderer.pushMatrix(this.#transformMatrix);
+                this.drawSelf(renderer);
+                renderer.popTransform();
+            }, () => {
+                renderer.pushTransform();
+                objects.forEach(o => {
+                    renderer.transform = o.#transformMatrix;
+                    o.drawSelf(renderer);
+                });
+                renderer.popTransform();
+            });
+        } else {
+            renderer.pushMatrix(this.#transformMatrix);
+            this.drawSelf(renderer);
+            objects.forEach(obj => {
+                if (obj.stencil !== Stencil.NONE) {
+                    renderer.transform = obj.#parent!.#transformMatrix;
+                    obj.drawTree(renderer);
+                } else {
+                    renderer.transform = obj.#transformMatrix;
+                    obj.drawSelf(renderer);
+                }
+            });
+            renderer.popTransform();
+        }
+    }
+    #transformMatrix = new Mat23();
+    inspect(): string[] {
+        const lines: string[] = [];
+        for (const [id, comp] of this.#compStates) {
+            const c = comp.inspect();
+            if (c) {
+                lines.push(`${id}: ${c}`);
+            } else {
+                lines.push(id);
+            }
+        }
+        lines.push("");
+        lines.push(...this.#tags);
+        return lines;
+    }
+    drawInspect(renderer: Renderer) {
+        if (this.hidden) return;
+        this.#children.forEach(c => c.drawInspect(renderer));
+        renderer.transform = this.#transformMatrix;
+        this.emit("drawInspect", renderer);
+    }
+    #transformVersion = 0;
+    #treeIndex = 0;
+    #dirtyTransform() {
+        this.#transformVersion = nextTransformVersion(this.GAME[TRANSFORM_VERSION_MANAGER_SYMBOL]);
+    }
+    #transformTree(renderer: Renderer, force: boolean) {
+        const tvm = this.GAME[TRANSFORM_VERSION_MANAGER_SYMBOL];
+        const localUpdateNeeded = transformNeedsUpdate(tvm, this.#transformVersion);
+        const updateNeeded = force || localUpdateNeeded;
+        renderer.pushTransform();
+        if (updateNeeded) {
+            const t = renderer.transform;
+            Mat23_translateSelfV(t, this.#pos);
+            Mat23_rotateSelf(t, this.#angle);
+            Mat23_scaleSelfV(t, this.#scale);
+            Mat23_skewSelfV(t, this.#skew);
+            Mat23_copyFrom(this.#transformMatrix, t);
+            if (force && !localUpdateNeeded) this.#transformVersion = nextTransformVersion(tvm);
+        } else {
+            renderer.transform = this.#transformMatrix;
+        }
+        this.#treeIndex = nextTreeIndex(tvm);
+        this.#children.forEach(c => c.#transformTree(renderer, updateNeeded));
+        renderer.popTransform();
+    }
+    #collect(objects: GameObj[]) {
+        objects.push(this);
+        if (this.stencil !== Stencil.NONE) return;
+        this.#children.forEach(c => {
+            if (!c.hidden) c.#collect(objects);
+        });
+    }
+    #compIDs = new Set<CompID>();
+    #compStates = new Map<CompID, AlreadyBoundComp>();
+    #cleanups: Record<CompID, (() => void)[]> = {};
+    #onCurrentCompCleanups: ((gc: (() => void)) => void)[] = [];
+    #addComp(comp: AlreadyBoundComp) {
+        const compID = comp.id;
+        this.#compIDs.add(compID);
+        this.#compStates.set(compID, comp);
+        const gc: (() => any)[] = this.#cleanups[compID] = [];
+        const initFunc = () => {
+            this.#onCurrentCompCleanups.push((e: any) => gc.push(e));
+            comp.init();
+            this.#onCurrentCompCleanups.pop();
+        };
+        for (const name of allCompKeys(comp)) {
+            const property = getPropertyDescriptor(comp, name);
+            if (!property) continue;
+            if (typeof property.value === "function") {
+                // Bind methods to this, not the comp
+                // @ts-expect-error
+                comp[name] = comp[name].bind(this);
+                // this is what turns Comp --> AlreadyBoundComp
+            }
+            if (property.get) {
+                Object.defineProperty(comp, name, {
+                    get: property.get.bind(this),
+                });
+            }
+            if (property.set) {
+                Object.defineProperty(comp, name, {
+                    set: property.set.bind(this),
+                });
+            }
+            if (isCompDescriptor(name)) {
+                if (name === "init" && !this.exists()) {
+                    gc.push(this.on("add", initFunc).stop);
+                }
+            } else {
+                // @ts-expect-error
+                if (this[name] !== undefined) {
+                    const originalComp = this.#compStates.values().find(c => name in c)?.id;
+                    this.GAME.bluescreen(
+                        originalComp
+                            ? `while adding comp ${stringify(compID)}: duplicate property ${stringify(name)} originally added by comp ${stringify(originalComp)}`
+                            : `illegal property ${stringify(name)} on comp ${stringify(compID)}`);
+                }
+                // Assign comp fields to this
+                Object.defineProperty(this, name, {
+                    // @ts-ignore
+                    get: () => comp[name],
+                    // @ts-ignore
+                    set: (val) => comp[name] = val,
+                    configurable: true,
+                    enumerable: property.enumerable,
+                });
+                gc.push(() => delete this[name as keyof this]);
+            }
+        }
+        gc.push(comp.cleanup);
+        if (this.exists()) {
+            // we are already added, this was a direct .use()
+            initFunc();
+        }
+        if (!currentMaking.includes(this)) {
+            this.emit("use", compID);
+            this.GAME.emit("use", [this, compID]);
+        }
+    }
+    #removeComp(id: CompID) {
+        this.#compIDs.delete(id);
+        this.#compStates.delete(id);
+        if (!currentMaking.includes(this)) {
+            this.emit("unuse", id);
+            this.GAME.emit("unuse", [this, id]);
+        }
+        if (this.#cleanups[id]) {
+            this.#cleanups[id].forEach(c => c());
+            delete this.#cleanups[id];
+        }
+    }
+    #checkDependencies(newlyAddedComp: Comp) {
+        for (var required of newlyAddedComp.require) {
+            if (!this.#compIDs.has(required)) {
+                // TODO: auto-add if it's allowed?
+                this.GAME.bluescreen(`can't add ${stringify(newlyAddedComp.id)}: ${stringify(required)} is required but not yet added`);
+            }
+        }
+    }
+    #checkDependents(id: CompID) {
+        for (var comp of this.#compStates.values()) {
+            if (comp.require && comp.require.includes(id)) {
+                this.GAME.bluescreen(`can't remove ${stringify(id)}}: it is required by ${stringify(comp.id)}`);
+            }
+        }
+    }
+    use(comp: Comp) {
+        if (!comp || typeof comp !== "object") {
+            this.GAME.bluescreen(`invalid comp type "${typeof comp}"`);
+        }
+        if (comp.id && this.has(comp.id)) {
+            this.#removeComp(comp.id);
+        }
+        this.#checkDependencies(comp);
+        this.#addComp(comp);
+    }
+    unuse(id: CompID) {
+        if (!this.has(id)) return;
+        this.#checkDependents(id);
+        this.#removeComp(id);
+    }
+    has(compList: CompID | CompID[], all = true): boolean {
+        if (isArray(compList)) {
+            return compList[all ? "every" : "some"](c => this.has(c));
+        }
+        return this.#compStates.has(compList);
+    }
+    c(id: CompID): Comp | null {
+        return this.#compStates.get(id) ?? null;
+    }
+    tag(tag: Tag | Tag[]) {
+        if (isArray(tag)) {
+            tag.forEach(t => this.tag(t));
+            return;
+        }
+        this.#tags.add(tag);
+        if (!currentMaking.includes(this)) {
+            this.emit("tag", tag);
+            this.GAME.emit("tag", [this, tag]);
+        }
+    }
+    untag(tag: Tag | Tag[]) {
+        if (isArray(tag)) {
+            tag.forEach(t => this.untag(t));
+            return;
+        }
+        this.#tags.delete(tag);
+        this.emit("untag", tag);
+        this.GAME.emit("untag", [this, tag]);
+    }
+    is(tag: Tag | Tag[], all = true): boolean {
+        if (isArray(tag)) {
+            return tag[all ? "every" : "some"](t => this.is(t));
+        }
+        return this.#tags.has(tag);
+    }
+    on<N extends keyof GameObjEvents>(name: N, action: (arg: GameObjEvents[N]) => void): EventSubscriptionController {
+        const c = super.on(name, action.bind(this));
+        last(this.#onCurrentCompCleanups)?.(c.stop);
+        return c;
+    }
+
+    color = new Color(255, 255, 255);
+    opacity = 1;
+    blend = BlendMode.NORMAL;
+    shader: string | null = null;
+    uniforms: Uniforms = {};
+    fixed = false;
+    stencil = Stencil.NONE;
+    #pos = new Vec2(0);
+    get pos() { return this.#pos; }
+    set pos(p) { Vec2_copy(p, this.#pos); this.#dirtyTransform(); }
+    zIndex = 0;
+    #scale = new Vec2(1);
+    get scale() { return this.#scale; }
+    set scale(s) { Vec2_copy(s, this.#scale); this.#dirtyTransform(); }
+    #angle = 0;
+    get angle() { return this.#angle; }
+    set angle(a) { this.#angle = a; this.#dirtyTransform(); }
+    #skew = new Vec2(0);
+    get skew() { return this.#skew; }
+    set skew(s) { Vec2_copy(s, this.#skew); this.#dirtyTransform(); }
+}

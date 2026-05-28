@@ -5,6 +5,7 @@
         "lerp",
         "linkify",
         "mediump",
-        "onfire"
+        "onfire",
+        "unuse"
     ]
 }

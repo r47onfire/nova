@@ -1,11 +1,12 @@
-import { Color, COLOR_BLACK, COLOR_WHITE, M23_IDENTITY, M4_IDENTITY, Mat23, Mat4, Quad, Vec2 } from "@r47onfire/game-math";
-import { last } from "lib0/array";
+import { Color, COLOR_BLACK, COLOR_WHITE, M23_IDENTITY, M4_IDENTITY, Mat23, Mat23_copyFrom, Mat4, Quad, Vec2 } from "@r47onfire/game-math";
+import { from, last } from "lib0/array";
 import { isNumber } from "lib0/function";
 import { min } from "lib0/math";
 import { deepEqual } from "../utils";
 import { FrameBuffer } from "./FrameBuffer";
 import { Mesh } from "./Mesh";
 import { BlendMode, createShaderFromDefaultTemplate, Shader, UniformType } from "./Shader";
+import { Stencil } from "./stencil";
 import { TexFilter, Texture, TexWrapMode } from "./Texture";
 import { DEFAULT_VERTEX_FORMAT } from "./vertex";
 
@@ -44,7 +45,6 @@ export interface RendererOptions {
 }
 
 export enum StackKind {
-    TRANSFORM,
     TEXTURE_2D,
     VAO,
     FRAME_BUFFER,
@@ -56,7 +56,6 @@ export enum StackKind {
 const SCREEN_TEX = Symbol("screen texture") as any as string;
 
 type StackElementType<T extends StackKind> = {
-    [StackKind.TRANSFORM]: Mat23;
     [StackKind.TEXTURE_2D]: WebGLTexture;
     [StackKind.VAO]: WebGLVertexArrayObject;
     [StackKind.FRAME_BUFFER]: WebGLFramebuffer;
@@ -88,7 +87,7 @@ export class Renderer {
     #canvasScaleX = -1;
     #canvasScaleY = -1;
     #resizeObserver: ResizeObserver;
-    #backgroundColor: Color;
+    backgroundColor: Color;
     constructor(options: RendererOptions, onResizedCallback: () => void) {
         this.#pixelDensity = options.pixelDensity ?? min(devicePixelRatio, 2);
         this.#scale = options.scale ?? 1;
@@ -123,7 +122,6 @@ export class Renderer {
         this.gl = gl;
 
         this.#setFuncs = {
-            [StackKind.TRANSFORM]() { },
             [StackKind.TEXTURE_2D](tex) {
                 gl.bindTexture(gl.TEXTURE_2D, tex);
             },
@@ -161,7 +159,7 @@ export class Renderer {
             onResizedCallback();
         })).observe(canvas);
 
-        this.#backgroundColor = options.background ?? COLOR_BLACK;
+        this.backgroundColor = options.background ?? COLOR_BLACK;
 
         this.#resizeFrameBuffer();
 
@@ -198,20 +196,28 @@ export class Renderer {
     #drawCalls = 0;
     // Public mirror
     drawCalls = 0;
+    #transformStack = from({ length: 32 }, () => new Mat23);
+    #transformStackIndex = 0;
+    #transform = new Mat23;
+    get transform(): Readonly<Mat23> {
+        return this.#transform;
+    }
+    set transform(m: Readonly<Mat23>) {
+        Mat23_copyFrom(this.#transform, m);
+    }
     #startFrame() {
         const gl = this.gl;
-        const { r, g, b } = this.#backgroundColor;
+        const { r, g, b } = this.backgroundColor;
         gl.clearColor(r, g, b, 1);
-        // clear backbuffer
+        // clear screen
         gl.clear(gl.COLOR_BUFFER_BIT);
         // clear framebuffer
         this.#frameBuffer.bind();
         gl.clear(gl.COLOR_BUFFER_BIT);
         this.#drawCalls = 0;
         // Clear active transform
-        const s = (this.#stacks[StackKind.TRANSFORM] ??= []);
-        s.length = 1;
-        s[0] = M23_IDENTITY;
+        this.#transformStackIndex = 0;
+        this.transform = M23_IDENTITY;
     }
     #endFrame() {
         this.#flush();
@@ -246,7 +252,7 @@ export class Renderer {
         frameCb();
         this.#endFrame();
     }
-    #sameTexture(a: string | null, b: string | null) {
+    #sameGPUTexture(a: string | null, b: string | null) {
         const ta = this.#namedTextures.get(a!);
         const tb = this.#namedTextures.get(b!);
         if (!ta || !tb) return ta === tb;
@@ -256,7 +262,7 @@ export class Renderer {
         return a.fixed === b.fixed
             && a.shader === b.shader
             && a.blend === b.blend
-            && this.#sameTexture(a.tex, b.tex)
+            && this.#sameGPUTexture(a.tex, b.tex)
             && deepEqual(a.format, b.format)
             && deepEqual(a.uniforms, b.uniforms);
     }
@@ -392,5 +398,50 @@ export class Renderer {
         }
 
         return [n, new Vec2(quad.x, quad.y), new Vec2(quad.w, quad.h)];
+    }
+    drawStenciled(stencil: Stencil, mask: () => void, content: () => void) {
+        this.#flush();
+
+        const gl = this.gl;
+        const { STENCIL_BUFFER_BIT, STENCIL_TEST, NEVER, NOTEQUAL, EQUAL, REPLACE, KEEP } = gl;
+
+        gl.clear(STENCIL_BUFFER_BIT);
+        gl.enable(STENCIL_TEST);
+
+        // don't perform test, pure write
+        gl.stencilFunc(NEVER, 1, 255);
+
+        // always replace since we're writing to the buffer
+        gl.stencilOp(REPLACE, REPLACE, REPLACE);
+
+        mask();
+        this.#flush();
+
+        // perform test
+        gl.stencilFunc(
+            stencil === Stencil.SUBTRACT ? NOTEQUAL
+                : stencil === Stencil.INTERSECT ? EQUAL : NEVER,
+            1,
+            255);
+
+        // don't write since we're only testing
+        gl.stencilOp(KEEP, KEEP, KEEP);
+
+        content();
+        this.#flush();
+        gl.disable(STENCIL_TEST);
+    }
+
+    pushTransform() {
+        Mat23_copyFrom(this.#transformStack[++this.#transformStackIndex] ??= new Mat23, this.#transform);
+    }
+    popTransform() {
+        if (this.#transformStackIndex >= 0) {
+            Mat23_copyFrom(this.#transform, this.#transformStack[this.#transformStackIndex--]!);
+        }
+    }
+    pushMatrix(m: Mat23) {
+        this.pushTransform();
+        Mat23_copyFrom(this.#transform, m);
     }
 }

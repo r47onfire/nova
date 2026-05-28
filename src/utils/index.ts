@@ -11,7 +11,7 @@ export const deepEqual = <T>(a: T, b: T): boolean => {
     const keysB = keys(b);
     if (keysA.length !== keysB.length) return false;
 
-    for (var key of keysA) {
+    for (const key of keysA) {
         if (!keysB.includes(key)) return false;
         if (!deepEqual((<any>a)[key], (<any>b)[key])) return false;
     }

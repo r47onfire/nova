@@ -30,7 +30,7 @@ export const DEFAULT_VERTEX_FORMAT: VertexFormat = [
         fill: 0,
         transform(renderer, _mesh, _quad, data) {
             Vec2_set(SCRATCH_POINT, data[0], data[1]);
-            Mat23_transformPointV_m(renderer.get(StackKind.TRANSFORM), SCRATCH_POINT, SCRATCH_POINT);
+            Mat23_transformPointV_m(renderer.transform, SCRATCH_POINT, SCRATCH_POINT);
             data[0] = SCRATCH_POINT.x;
             data[1] = SCRATCH_POINT.y;
         }
