@@ -1,7 +1,7 @@
 import { Color, Mat23, Mat4, Mat4_from_Mat23, Vec2, Vec3 } from "@r47onfire/game-math";
 import fragTemplate from "./fragmentTemplate.glsl";
 import { Renderer, StackKind } from "./Renderer";
-import { DEFAULT_VERTEX_FORMAT, VertexFormat } from "./vertex";
+import { VertexFormat } from "./vertex";
 import vertTemplate from "./vertexTemplate.glsl";
 
 export enum UniformType {
@@ -185,5 +185,5 @@ export const createShaderFromDefaultTemplate = (renderer: Renderer, userVert: st
     if (userFrag) {
         frag = frag.replace(/vec4 frag\(.+?\)\s*\{.+?\}/, userFrag);
     }
-    return new Shader(renderer, vert, frag, DEFAULT_VERTEX_FORMAT, maxVertices, maxIndices);
+    return new Shader(renderer, vert, frag, renderer.defaultVertexFormat, maxVertices, maxIndices);
 }

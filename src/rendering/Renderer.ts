@@ -1,14 +1,14 @@
-import { Color, COLOR_BLACK, COLOR_WHITE, M23_IDENTITY, M4_IDENTITY, Mat23, Mat23_copyFrom, Mat4, Quad, Vec2 } from "@r47onfire/game-math";
+import { Color, COLOR_BLACK, COLOR_WHITE, M23_IDENTITY, M4_IDENTITY, Mat23, Mat23_copyFrom, Mat23_transformPointV_m, Mat4, Quad, Vec2, Vec2_set } from "@r47onfire/game-math";
 import { from, last } from "lib0/array";
 import { isNumber } from "lib0/function";
 import { min } from "lib0/math";
-import { deepEqual } from "../utils";
+import { deepEqual, SCRATCH_POINT } from "../utils";
 import { FrameBuffer } from "./FrameBuffer";
 import { Mesh } from "./Mesh";
 import { BlendMode, createShaderFromDefaultTemplate, Shader, UniformType } from "./Shader";
 import { Stencil } from "./stencil";
 import { TexFilter, Texture, TexWrapMode } from "./Texture";
-import { DEFAULT_VERTEX_FORMAT } from "./vertex";
+import { VertexFormat, VertexParameter } from "./vertex";
 
 /**
  * Options for setting up the renderer
@@ -80,7 +80,6 @@ export class Renderer {
     #camMatrix: Mat4 = M4_IDENTITY;
     #namedShaders = new Map<string, Shader>();
     #namedTextures = new Map<string, [tex: Texture, q: Quad]>();
-    #textureAtlases: Texture[] = [];
     #frameBuffer!: FrameBuffer;
     #width = -1;
     #height = -1;
@@ -88,6 +87,7 @@ export class Renderer {
     #canvasScaleY = -1;
     #resizeObserver: ResizeObserver;
     backgroundColor: Color;
+    readonly defaultVertexFormat: VertexFormat;
     constructor(options: RendererOptions, onResizedCallback: () => void) {
         this.#pixelDensity = options.pixelDensity ?? min(devicePixelRatio, 2);
         this.#scale = options.scale ?? 1;
@@ -143,6 +143,42 @@ export class Renderer {
                 gl.useProgram(sh);
             }
         };
+
+        this.defaultVertexFormat = [
+            {
+                attr: "a_pos",
+                fields: ["x", "y", "z"],
+                fill: 0,
+                transform: (_mesh, _quad, data) => {
+                    Vec2_set(SCRATCH_POINT, data[0], data[1]);
+                    Mat23_transformPointV_m(this.transform, SCRATCH_POINT, SCRATCH_POINT);
+                    data[0] = SCRATCH_POINT.x;
+                    data[1] = SCRATCH_POINT.y;
+                }
+            } satisfies VertexParameter<3>,
+            {
+                attr: "a_uv",
+                fields: ["u", "v"],
+                fill: -1, // -1 == OOB, for primitives that don't set uv
+                transform(_mesh, quad, data) {
+                    data[0] = quad.x + data[0] * quad.w;
+                    data[1] = quad.y + data[1] * quad.h;
+                },
+            } satisfies VertexParameter<2>,
+            {
+                attr: "a_color",
+                fields: ["r", "g", "b", "a"],
+                fill: [255, 255, 255, 1],
+                transform(mesh, _quad, data) {
+                    // Multiply the two and then normalize to 0-1
+                    data[0] *= mesh.color.r / 255 / 255;
+                    data[1] *= mesh.color.g / 255 / 255;
+                    data[2] *= mesh.color.b / 255 / 255;
+                    // Opacity is already normalized to 0-1
+                    data[3] *= mesh.opacity;
+                }
+            } satisfies VertexParameter<4>,
+        ];
 
         this.#defaultShader = createShaderFromDefaultTemplate(this, null, null, 2048 * 8, 2048 * 6);
 
@@ -229,7 +265,7 @@ export class Renderer {
         // Draw post effect shader(s)
         const w = this.#width, h = this.#height;
         this.drawMesh(new Mesh(
-            DEFAULT_VERTEX_FORMAT,
+            this.defaultVertexFormat,
             [
                 { x: 0, y: 0, u: 0, v: 1 }, // topleft
                 { x: w, y: 0, u: 1, v: 1 }, // topright
@@ -249,8 +285,8 @@ export class Renderer {
     }
     doFrame(frameCb: () => void) {
         this.#startFrame();
-        frameCb();
-        this.#endFrame();
+        try { frameCb(); }
+        finally { this.#endFrame(); }
     }
     #sameGPUTexture(a: string | null, b: string | null) {
         const ta = this.#namedTextures.get(a!);
@@ -288,7 +324,7 @@ export class Renderer {
                     const field = fields[i]!;
                     data.push(vertex[field] ?? (isNumber(fill) ? fill : fill?.[i] ?? 0));
                 }
-                transform?.call(format, this, mesh, texQuad, data as any);
+                transform?.(mesh, texQuad, data as any);
                 for (var i = 0; i < data.length; i++) this.#vertexDataQueue.push(data[i]!);
                 data.length = 0;
             }

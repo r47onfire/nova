@@ -7,7 +7,7 @@ out vec4 fragColor;
 uniform sampler2D u_tex;
 vec4 def_frag() {
     vec4 c = vec4(1.f);
-    if(v_uv.x >= 0.0f && v_uv.x <= 1.0f && v_uv.y >= 0.0f && v_uv.y <= 1.0f)
+    if(v_uv.x >= 0.f && v_uv.x <= 1.f && v_uv.y >= 0.f && v_uv.y <= 1.f)
         c = texture(u_tex, v_uv);
     return vec4(v_color.rgb * c.rgb, c.a) * v_color.a;
 }

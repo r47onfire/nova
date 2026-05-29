@@ -8,7 +8,6 @@ import { TimeController } from "./loop/TimeController";
 import { Mesh } from "./rendering/Mesh";
 import { Renderer, RendererOptions } from "./rendering/Renderer";
 import { BlendMode } from "./rendering/Shader";
-import { DEFAULT_VERTEX_FORMAT } from "./rendering/vertex";
 export * from "@r47onfire/game-math";
 
 export interface NovaOptions extends RendererOptions, InputManagerOptions {
@@ -28,15 +27,15 @@ type GlobalEvents = {
 type WithObject<T> = { [K in keyof T]: T[K] extends void ? GameObj : [GameObj, T[K]] };
 
 export default class Nova extends EventDispatcher<GlobalEvents> {
-    readonly #renderer: Renderer;
+    readonly renderer: Renderer;
     #timeController = new TimeController;
     #inputManager: InputManager;
     [TRANSFORM_VERSION_MANAGER_SYMBOL] = new GameObjVersionManager;
     #inputEventQueue: { [K in keyof GlobalEvents]: [K, GlobalEvents[K]] }[keyof GlobalEvents][] = [];
     constructor(options: NovaOptions) {
         super();
-        this.#renderer = new Renderer(options, () => this.#queueInputEvent("resize"));
-        this.#inputManager = new InputManager(options, this.#renderer.canvas, (name, arg) => this.#queueInputEvent(name, arg));
+        this.renderer = new Renderer(options, () => this.#queueInputEvent("resize"));
+        this.#inputManager = new InputManager(options, this.renderer.canvas, (name, arg) => this.#queueInputEvent(name, arg));
         this.#timeController.start(dt => this.#mainloop(dt));
     }
     #queueInputEvent<N extends keyof GlobalEvents>(name: N & (GlobalEvents[N] extends void ? N : never)): void;
@@ -46,9 +45,8 @@ export default class Nova extends EventDispatcher<GlobalEvents> {
     }
     bluescreen(err: any): never {
         this.#timeController.shouldStop = true;
-        this.#renderer.backgroundColor = COLOR_BLUE;
+        this.renderer.backgroundColor = COLOR_BLUE;
         // TODO: draw bluescreen
-        // TODO: but we might be inside the renderer doFrame()
         const error = err instanceof Error ? err : new Error(String(err));
         this.emit("error", error);
         throw error;
@@ -57,9 +55,9 @@ export default class Nova extends EventDispatcher<GlobalEvents> {
         // Update systems
         // Update root object
         // Draw
-        this.#renderer.doFrame(() => {
-            this.#renderer.drawMesh(new Mesh(
-                DEFAULT_VERTEX_FORMAT,
+        this.renderer.doFrame(() => {
+            this.renderer.drawMesh(new Mesh(
+                this.renderer.defaultVertexFormat,
                 [
                     { x: 100, y: 100, r: 255, g: 0, b: 0 }, // topleft
                     { x: 200, y: 100, r: 0, g: 255, b: 0 }, // topright
@@ -75,8 +73,8 @@ export default class Nova extends EventDispatcher<GlobalEvents> {
                 BlendMode.NORMAL,
                 false
             ));
-            this.#renderer.drawMesh(new Mesh(
-                DEFAULT_VERTEX_FORMAT,
+            this.renderer.drawMesh(new Mesh(
+                this.renderer.defaultVertexFormat,
                 [
                     { x: 300, y: 100, r: 255, g: 0, b: 0 }, // topleft
                     { x: 500, y: 100, r: 0, g: 255, b: 0 }, // topright

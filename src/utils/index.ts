@@ -1,5 +1,8 @@
+import { Vec2 } from "@r47onfire/game-math";
 import { isArray } from "lib0/array";
 import { keys } from "lib0/object";
+
+export const SCRATCH_POINT = new Vec2();
 
 export const deepEqual = <T>(a: T, b: T): boolean => {
     if (a === b) return true;
