@@ -1,5 +1,5 @@
 import { Quad } from "@r47onfire/game-math";
-import { Mesh } from "./Mesh";
+import { Mesh } from "./meshes/Mesh";
 
 export interface Vertex {
     [field: string]: number;

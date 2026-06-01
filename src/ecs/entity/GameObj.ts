@@ -7,17 +7,20 @@ import { Renderer } from "../../rendering/Renderer";
 import { BlendMode, Uniforms } from "../../rendering/Shader";
 import { Stencil } from "../../rendering/stencil";
 import { allCompKeys, AlreadyBoundComp, Comp, getPropertyDescriptor, isCompDescriptor, type CompID } from "../components/Comp";
+import { tsortComps } from "../../utils/tsort";
 import { type GameObjEvents } from "./GameObjEvents";
 import { type GameObj } from "./GameObjType";
 import { nextTransformVersion, nextTreeIndex, TRANSFORM_VERSION_MANAGER_SYMBOL, transformNeedsUpdate } from "./VersionManager";
 
 export type Tag = `#${string}:${string}`;
 
-const currentMaking: GameObj[] = [];
-
 var id = 1;
 
 export class GameObjRaw extends EventDispatcher<GameObjEvents> {
+    /**
+     * The unique id of the game object. Will be null if the object is destroyed
+     * (e.g. {@link destroy()} has been called).
+     */
     id: number | null;
     readonly GAME: Nova;
     name: string | undefined;
@@ -31,32 +34,25 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         super();
         this.GAME = game;
         this.id = id;
-        currentMaking.push(this);
-        try {
-            // Add comp ids first since they're all getting added simultaneously
-            for (const comp of comps) {
-                this.#compIDs.add(comp.id);
-            }
-            for (const comp of comps) {
-                this.use(comp);
-            }
-            for (const tag of tags) {
-                this.tag(tag);
-            }
-        } finally {
-            currentMaking.pop();
-        }
         this.parent = parent;
-        // Run global events first, so things that listen for onAdd()
-        // see the object with *only* comps added during make(),
-        // and *then* run the comps' add() which may add other comps
-        // and trigger onUse()
         game.emit("add", this);
         this.emit("add");
+        for (const comp of tsortComps(comps, c => c.id, c => c.require)) {
+            this.use(comp);
+        }
+        for (const tag of tags) {
+            this.tag(tag);
+        }
     }
     #parent!: GameObj | null;
     #children: GameObj[] = [];
+    /**
+     * Get all children game objects.
+     */
     get children(): readonly GameObj[] { return this.#children; }
+    /**
+     * Get or set the parent game object.
+     */
     set parent(newParent: GameObj) {
         if (this.id === null) this.GAME.bluescreen("can't re-parent destroyed object");
         if (this.#parent === newParent) return; // noop
@@ -74,6 +70,9 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
             this.#hiddenChanged(oldHidden, this.isHidden());
         }
     }
+    /**
+     * Set the parent game obj with options to keep transformations.
+     */
     setParent(newParent: GameObj, keepPosition = false, keepAngle = false, keepScale = false) {
         if (this.#parent === newParent) return;
         const oldTransform = this.#parent!.#transformMatrix;
@@ -95,8 +94,14 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
     get parent() { return this.#parent!; }
     #paused = false;
     #hidden = false;
+    /**
+     * If the game object should update itself or its children.
+     */
     get paused() { return this.#paused; }
     set paused(value) { const old = this.#paused; this.#pausedChanged(old, this.#paused = value); }
+    /**
+     * If the game object should draw itself or its children.
+     */
     get hidden() { return this.#hidden; }
     set hidden(value) { const old = this.#hidden; this.#hiddenChanged(old, this.#hidden = value); }
     #pausedChanged(oldValue: boolean, newValue: boolean) {
@@ -127,13 +132,25 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
     isHidden(): boolean {
         return this.#hidden || (this.#parent?.isHidden() ?? false);
     }
-    #tags = new Set<Tag>();
-    get tags() { return this.#tags; }
+    /**
+     * Add a child.
+     *
+     * @param comps - The components to add.
+     * @param tags - The tags to add.
+     *
+     * @returns The added game object.
+     */
     add<T extends Comp[]>(comps: [...T], tags: Tag[]): GameObj<T> {
         if (this.id === null) this.GAME.bluescreen("can't add child to destroyed object");
         return new GameObjRaw(this.GAME, this, id++, comps, tags) as GameObj<T>;
     }
-    readd<T>(obj: GameObj<T>): GameObj<T> {
+    /**
+     * Remove and re-add the game obj, without triggering add / destroy events.
+     *
+     * @returns The re-added game object.
+     * @since v3000.0
+     */
+    readd<T extends GameObj<any>>(obj: T): T {
         const c = this.#children;
         const idx = c.indexOf(obj);
         if (idx >= 0) {
@@ -142,24 +159,44 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         }
         return obj;
     }
+    /**
+     * Remove this game obj from the scene graph and mark it as permanently destroyed.
+     */
     destroy() {
         this.parent = null as any;
         this.id = null;
-        this.#compStates.forEach(c => this.unuse(c.id));
+        while (this.#children.length) this.#children.pop()!.destroy();
+        [...this.#compStates.keys()].forEach(c => this.#removeComp(c));
         this.GAME.emit("destroy", this);
         this.emit("destroy");
-        while (this.#children.length) this.#children.pop()!.destroy();
     }
+    /**
+     * Remove and {@link destroy} all children.
+     * 
+     * If tag is provided, only the children with that tag will be destroyed.
+     */
     removeAll(tag?: Tag) {
         (tag ? this.get(tag) : this.#children.slice()).forEach(c => c.destroy());
     }
+    /**
+     * If game obj is attached to the scene graph.
+     */
     exists() {
         return this.id !== null && this.#parent !== null;
     }
+    /**
+     * Check if is an ancestor (recursive parent) of another game object
+     */
     isAncestorOf(obj: GameObj): boolean {
         const parent = obj.parent;
-        return parent ? parent === this || this.isAncestorOf(parent) : false;
+        return parent ? (parent === this || this.isAncestorOf(parent)) : false;
     }
+    /**
+     * Get a list of all game objs with certain tag.
+     *
+     * @param tag - The tag to get.
+     * @param recurse - Whether to recurse into children.
+     */
     get(tag: Tag, recurse = false): GameObj[] {
         return this.#children.flatMap(c => {
             const children = recurse ? c.get(tag, recurse) : [];
@@ -168,6 +205,11 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
     }
     #drawLayerIndex!: number;
     #layerIndex!: number;
+    /**
+     * Update this game object and all children game objects.
+     *
+     * @param dt - the time delta since the last update
+     */
     update(dt: number) {
         if (this.paused) return;
         this.emit("update", dt);
@@ -176,10 +218,17 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         this.#compStates.forEach(c => c.update?.(dt));
         // TODO: sync appearance to meshes
     }
+    /**
+     * Draw this game object only using the components and the draw handlers,
+     * don't recurse into children
+     */
     drawSelf(renderer: Renderer) {
         this.#compStates.forEach(c => c.draw(renderer));
         this.emit("draw", renderer);
     }
+    /**
+     * Draw this game object and all children, and sort on layer and z-index
+     */
     drawTree(renderer: Renderer) {
         if (this.hidden) return;
         const objects: GameObj[] = [];
@@ -219,6 +268,9 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         }
     }
     #transformMatrix = new Mat23();
+    /**
+     * Gather debug info of all comps and tags
+     */
     inspect(): string[] {
         const lines: string[] = [];
         for (const [id, comp] of this.#compStates) {
@@ -233,6 +285,9 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         lines.push(...this.#tags);
         return lines;
     }
+    /**
+     * Draw debug info in inspect mode
+     */
     drawInspect(renderer: Renderer) {
         if (this.hidden) return;
         this.#children.forEach(c => c.drawInspect(renderer));
@@ -334,18 +389,14 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
             // we are already added, this was a direct .use()
             initFunc();
         }
-        if (!currentMaking.includes(this)) {
-            this.emit("use", compID);
-            this.GAME.emit("use", [this, compID]);
-        }
+        this.emit("use", compID);
+        this.GAME.emit("use", [this, compID]);
     }
     #removeComp(id: CompID) {
         this.#compIDs.delete(id);
         this.#compStates.delete(id);
-        if (!currentMaking.includes(this)) {
-            this.emit("unuse", id);
-            this.GAME.emit("unuse", [this, id]);
-        }
+        this.emit("unuse", id);
+        this.GAME.emit("unuse", [this, id]);
         if (this.#cleanups[id]) {
             this.#cleanups[id].forEach(c => c());
             delete this.#cleanups[id];
@@ -366,7 +417,20 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
             }
         }
     }
-    use(comp: Comp) {
+    /**
+     * Add a component.
+     *
+     * @example
+     * ```js
+     * const obj = game.root.add([
+     *    sprite("bean"),
+     * ]);
+     *
+     * // Add opacity
+     * obj.use(opacity(0.5));
+     * ```
+     */
+    use<T extends Comp>(comp: T): asserts this is GameObj<T> {
         if (!comp || typeof comp !== "object") {
             this.GAME.bluescreen(`invalid comp type "${typeof comp}"`);
         }
@@ -376,31 +440,94 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         this.#checkDependencies(comp);
         this.#addComp(comp);
     }
+    /**
+     * Remove a component by id.
+     *
+     * @example
+     * ```js
+     * // Remove sprite component
+     * obj.unuse("nova:sprite");
+     * ```
+     */
     unuse(id: CompID) {
         if (!this.has(id)) return;
         this.#checkDependents(id);
         this.#removeComp(id);
     }
+    /**
+     * Check if game object has a certain component.
+     *
+     * @param compList - The component id(s) to check.
+     * @param all - whether to return true if the object has all the components (true, the default), or if the object has any of the components (false).
+     *
+     * @example
+     * ```js
+     * // Check if game object has the nova:sprite component
+     * if (obj.has("nova:sprite")) {
+     *     game.debug.log("has nova:sprite component");
+     * }
+     *
+     * // Check if game object has tags
+     * obj.has(["nova:sprite", "nova:area"]); // true if obj has both components, false otherwise
+     * obj.has(["nova:sprite", "nova:area"], false); // false if obj has neither component, true otherwise
+     * ```
+     */
     has(compList: CompID | CompID[], all = true): boolean {
         if (isArray(compList)) {
             return compList[all ? "every" : "some"](c => this.has(c));
         }
         return this.#compStates.has(compList);
     }
+    /**
+     * Get state for a specific comp.
+     *
+     * @param id - The component id.
+     */
     c(id: CompID): Comp | null {
         return this.#compStates.get(id) ?? null;
     }
+    #tags = new Set<Tag>();
+    /**
+     * Get the tags of a game object. To update it, use {@link tag()} and {@link untag()}.
+     */
+    get tags(): ReadonlySet<Tag> { return this.#tags; }
+    /**
+     * Add a tag(s) to the game obj.
+     *
+     * @param tag - The tag(s) to add.
+     *
+     * @example
+     * ```js
+     * // add enemy tag
+     * obj.tag("#game:enemy");
+     *
+     * // add multiple tags
+     * obj.tag(["#game:enemy", "#game:boss"]);
+     * ```
+     */
     tag(tag: Tag | Tag[]) {
         if (isArray(tag)) {
             tag.forEach(t => this.tag(t));
             return;
         }
         this.#tags.add(tag);
-        if (!currentMaking.includes(this)) {
-            this.emit("tag", tag);
-            this.GAME.emit("tag", [this, tag]);
-        }
+        this.emit("tag", tag);
+        this.GAME.emit("tag", [this, tag]);
     }
+    /**
+     * Remove a tag(s) from the game obj.
+     *
+     * @param tag - The tag(s) to remove.
+     *
+     * @example
+     * ```js
+     * // remove enemy tag
+     * obj.untag("#game:enemy");
+     *
+     * // remove multiple tags
+     * obj.untag(["#game:enemy", "#game:boss"]);
+     * ```
+     */
     untag(tag: Tag | Tag[]) {
         if (isArray(tag)) {
             tag.forEach(t => this.untag(t));
@@ -410,12 +537,24 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         this.emit("untag", tag);
         this.GAME.emit("untag", [this, tag]);
     }
+    /**
+     * If there's certain tag(s) on the game obj.
+     *
+     * @param tag - The tag(s) for checking.
+     * @param all - whether to return true if the object has all the tags (true, the default), or if the object has any of the tags (false).
+     */
     is(tag: Tag | Tag[], all = true): boolean {
         if (isArray(tag)) {
             return tag[all ? "every" : "some"](t => this.is(t));
         }
         return this.#tags.has(tag);
     }
+    /**
+     * Register an event handler.
+     *
+     * @param event - The event name.
+     * @param action - The action to run when event is triggered.
+     */
     on<N extends keyof GameObjEvents>(name: N, action: (arg: GameObjEvents[N]) => void): EventSubscriptionController {
         const c = super.on(name, action.bind(this));
         last(this.#onCurrentCompCleanups)?.(c.stop);

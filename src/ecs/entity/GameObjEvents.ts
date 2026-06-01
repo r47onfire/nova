@@ -7,7 +7,10 @@ export type GameObjEvents = {
     draw: Renderer;
     /** Triggered every frame while the object is not hidden and inspect mode is on */
     drawInspect: Renderer;
-    /** Triggered when object is added */
+    /**
+     * Triggered when object is added. NOTE: unlike KARLA, this event is sent *before*
+     * all components and tags are added; then the "use"/"tag" event fires for those.
+     */
     add: void;
     /** Triggered when object is destroyed */
     destroy: void;

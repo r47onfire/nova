@@ -4,7 +4,7 @@ import { isNumber } from "lib0/function";
 import { min } from "lib0/math";
 import { deepEqual, SCRATCH_POINT } from "../utils";
 import { FrameBuffer } from "./FrameBuffer";
-import { Mesh } from "./Mesh";
+import { Mesh } from "./meshes/Mesh";
 import { BlendMode, createShaderFromDefaultTemplate, Shader, UniformType } from "./Shader";
 import { Stencil } from "./stencil";
 import { TexFilter, Texture, TexWrapMode } from "./Texture";
@@ -235,10 +235,10 @@ export class Renderer {
     #transformStack = from({ length: 32 }, () => new Mat23);
     #transformStackIndex = 0;
     #transform = new Mat23;
-    get transform(): Readonly<Mat23> {
+    get transform(): Mat23 {
         return this.#transform;
     }
-    set transform(m: Readonly<Mat23>) {
+    set transform(m: Mat23) {
         Mat23_copyFrom(this.#transform, m);
     }
     #startFrame() {

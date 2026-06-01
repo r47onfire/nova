@@ -6,6 +6,7 @@
         "linkify",
         "mediump",
         "onfire",
+        "tsort",
         "unuse"
     ]
 }

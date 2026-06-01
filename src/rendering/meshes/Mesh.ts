@@ -1,6 +1,6 @@
 import { Color } from "@r47onfire/game-math";
-import { BlendMode, Uniforms } from "./Shader";
-import { Vertex, VertexFormat } from "./vertex";
+import { BlendMode, Uniforms } from "../Shader";
+import { Vertex, VertexFormat } from "../vertex";
 
 export class Mesh {
     constructor(

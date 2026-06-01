@@ -5,7 +5,7 @@ import { GameObjVersionManager, TRANSFORM_VERSION_MANAGER_SYMBOL } from "./ecs/e
 import { EventDispatcher } from "./events";
 import { InputEvents, InputManager, InputManagerOptions } from "./input/InputManager";
 import { TimeController } from "./loop/TimeController";
-import { Mesh } from "./rendering/Mesh";
+import { Mesh } from "./rendering/meshes/Mesh";
 import { Renderer, RendererOptions } from "./rendering/Renderer";
 import { BlendMode } from "./rendering/Shader";
 export * from "@r47onfire/game-math";
