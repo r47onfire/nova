@@ -1,5 +1,5 @@
 
-export const TRANSFORM_VERSION_MANAGER_SYMBOL = Symbol("versionManager");
+export const TRANSFORM_VERSION_MANAGER_SYMBOL: unique symbol = Symbol("versionManager");
 
 
 export class GameObjVersionManager {

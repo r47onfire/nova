@@ -3,6 +3,7 @@ import fragTemplate from "./fragmentTemplate.glsl";
 import { Renderer, StackKind } from "./Renderer";
 import { VertexFormat } from "./vertex";
 import vertTemplate from "./vertexTemplate.glsl";
+import { StringMatrix } from "../utils/types";
 
 export enum UniformType {
     FLOAT,
@@ -49,16 +50,16 @@ export type UniformEntry = {
 export type Uniforms = Record<string, UniformEntry>;
 
 /** Manages the shader program and vertex array object for the format */
-export class Shader {
+export class Shader<T extends VertexFormat<any>> {
     #renderer: Renderer;
     #glProgram: WebGLProgram;
-    #vertexFormat: VertexFormat;
+    #vertexFormat: T;
     #glVAO: WebGLVertexArrayObject;
     #glVBO: WebGLBuffer;
     #glIBO: WebGLBuffer;
     readonly stride: number;
 
-    constructor(renderer: Renderer, vert: string, frag: string, fmt: VertexFormat, public maxVertices: number, public maxIndices: number) {
+    constructor(renderer: Renderer, vert: string, frag: string, fmt: T, public maxVertices: number, public maxIndices: number) {
         this.#renderer = renderer;
         this.#vertexFormat = fmt;
         renderer.addCleanup(() => this.free());
@@ -150,8 +151,7 @@ export class Shader {
                 case UniformType.MAT23: gl.uniformMatrix4fv(loc, false, Mat4_from_Mat23(uniform[1]).m); break;
                 case UniformType.MAT4: gl.uniformMatrix4fv(loc, false, uniform[1].m); break;
                 case UniformType.SAMPLER2D:
-                    const data = this.#renderer.textureNumber(uniform[1]);
-                    const texNum = data[0], topleftUV = data[1], sizeUV = data[2];
+                    const data = this.#renderer.textureNumber(uniform[1]), texNum = data[0], topleftUV = data[1], sizeUV = data[2];
                     if (texNum === -1) {
                         console.warn(`tried to set uniform sampler2D ${name} to texture ${uniform[1]} that doesn't exist`);
                         break;
@@ -176,7 +176,7 @@ export class Shader {
     }
 }
 
-export const createShaderFromDefaultTemplate = (renderer: Renderer, userVert: string | null, userFrag: string | null, maxVertices: number, maxIndices: number): Shader => {
+export const createShaderFromDefaultTemplate = (renderer: Renderer, userVert: string | null, userFrag: string | null, maxVertices: number, maxIndices: number): Shader<any> => {
     var vert = vertTemplate.default;
     var frag = fragTemplate.default;
     if (userVert) {

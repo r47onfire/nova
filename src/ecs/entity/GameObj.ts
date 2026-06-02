@@ -11,6 +11,7 @@ import { tsortComps } from "../../utils/tsort";
 import { type GameObjEvents } from "./GameObjEvents";
 import { type GameObj } from "./GameObjType";
 import { nextTransformVersion, nextTreeIndex, TRANSFORM_VERSION_MANAGER_SYMBOL, transformNeedsUpdate } from "./VersionManager";
+import { RenderModifiers } from "../../rendering/RenderModifiers";
 
 export type Tag = `#${string}:${string}`;
 
@@ -561,12 +562,15 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         return c;
     }
 
-    color = new Color(255, 255, 255);
-    opacity = 1;
-    blend = BlendMode.NORMAL;
-    shader: string | null = null;
-    uniforms: Uniforms = {};
-    fixed = false;
+    mod: RenderModifiers = {
+        tex: undefined,
+        color: new Color(255, 255, 255),
+        opacity: 1,
+        shader: undefined,
+        blend: BlendMode.NORMAL,
+        uniforms: {},
+        fixed: false,
+    };
     stencil = Stencil.NONE;
     #pos = new Vec2(0);
     get pos() { return this.#pos; }

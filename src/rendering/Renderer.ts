@@ -1,14 +1,14 @@
-import { Color, COLOR_BLACK, COLOR_WHITE, M23_IDENTITY, M4_IDENTITY, Mat23, Mat23_copyFrom, Mat23_transformPointV_m, Mat4, Quad, Vec2, Vec2_set } from "@r47onfire/game-math";
+import { Color, COLOR_BLACK, M23_IDENTITY, M4_IDENTITY, Mat23, Mat23_copyFrom, Mat23_transformPointV_m, Mat4, Quad, Vec2, Vec2_set } from "@r47onfire/game-math";
 import { from, last } from "lib0/array";
 import { isNumber } from "lib0/function";
 import { min } from "lib0/math";
 import { deepEqual, SCRATCH_POINT } from "../utils";
 import { FrameBuffer } from "./FrameBuffer";
-import { Mesh } from "./meshes/Mesh";
+import { Mesh } from "./Mesh";
 import { BlendMode, createShaderFromDefaultTemplate, Shader, UniformType } from "./Shader";
 import { Stencil } from "./stencil";
 import { TexFilter, Texture, TexWrapMode } from "./Texture";
-import { VertexFormat, VertexParameter } from "./vertex";
+import { VertexParameter } from "./vertex";
 
 /**
  * Options for setting up the renderer
@@ -35,7 +35,7 @@ export interface RendererOptions {
     /**
      * Default filter to use for textures
      *
-     * @default "nearest"
+     * @default TexFilter.NEAREST
      */
     texFilter?: TexFilter;
     /**
@@ -76,9 +76,9 @@ export class Renderer {
     readonly defTexFilter: TexFilter;
     #stacks: Partial<{ [k in StackKind]: StackElementType<k>[] }> = {};
     #setFuncs: { [k in StackKind]: (el: StackElementType<k> | null) => void };
-    #defaultShader: Shader;
+    #defaultShader: Shader<typeof this["defaultVertexFormat"]>;
     #camMatrix: Mat4 = M4_IDENTITY;
-    #namedShaders = new Map<string, Shader>();
+    #namedShaders = new Map<string, Shader<any>>();
     #namedTextures = new Map<string, [tex: Texture, q: Quad]>();
     #frameBuffer!: FrameBuffer;
     #width = -1;
@@ -87,7 +87,43 @@ export class Renderer {
     #canvasScaleY = -1;
     #resizeObserver: ResizeObserver;
     backgroundColor: Color;
-    readonly defaultVertexFormat: VertexFormat;
+    readonly defaultVertexFormat = [
+        new VertexParameter(
+            "a_pos",
+            ["x", "y", "z"],
+            0,
+            data => {
+                Vec2_set(SCRATCH_POINT, data[0], data[1]);
+                Mat23_transformPointV_m(this.transform, SCRATCH_POINT, SCRATCH_POINT);
+                data[0] = SCRATCH_POINT.x;
+                data[1] = SCRATCH_POINT.y;
+            }
+        ),
+        new VertexParameter(
+            "a_uv",
+            ["u", "v"],
+            -1, // -1 == OOB, for primitives that don't set uv
+            (data, _mod, quad) => {
+                data[0] = quad.x + data[0] * quad.w;
+                data[1] = quad.y + data[1] * quad.h;
+            },
+        ),
+        new VertexParameter(
+            "a_color",
+            ["r", "g", "b", "a"],
+            [255, 255, 255, 1],
+            (data, { color, opacity }) => {
+                if (color) {
+                    // Multiply the two and then normalize to 0-1
+                    data[0] *= color.r / 255 / 255;
+                    data[1] *= color.g / 255 / 255;
+                    data[2] *= color.b / 255 / 255;
+                }
+                // Opacity is already normalized to 0-1
+                if (opacity !== undefined) data[3] *= opacity;
+            }
+        ),
+    ] as const;
     constructor(options: RendererOptions, onResizedCallback: () => void) {
         this.#pixelDensity = options.pixelDensity ?? min(devicePixelRatio, 2);
         this.#scale = options.scale ?? 1;
@@ -143,42 +179,6 @@ export class Renderer {
                 gl.useProgram(sh);
             }
         };
-
-        this.defaultVertexFormat = [
-            {
-                attr: "a_pos",
-                fields: ["x", "y", "z"],
-                fill: 0,
-                transform: (_mesh, _quad, data) => {
-                    Vec2_set(SCRATCH_POINT, data[0], data[1]);
-                    Mat23_transformPointV_m(this.transform, SCRATCH_POINT, SCRATCH_POINT);
-                    data[0] = SCRATCH_POINT.x;
-                    data[1] = SCRATCH_POINT.y;
-                }
-            } satisfies VertexParameter<3>,
-            {
-                attr: "a_uv",
-                fields: ["u", "v"],
-                fill: -1, // -1 == OOB, for primitives that don't set uv
-                transform(_mesh, quad, data) {
-                    data[0] = quad.x + data[0] * quad.w;
-                    data[1] = quad.y + data[1] * quad.h;
-                },
-            } satisfies VertexParameter<2>,
-            {
-                attr: "a_color",
-                fields: ["r", "g", "b", "a"],
-                fill: [255, 255, 255, 1],
-                transform(mesh, _quad, data) {
-                    // Multiply the two and then normalize to 0-1
-                    data[0] *= mesh.color.r / 255 / 255;
-                    data[1] *= mesh.color.g / 255 / 255;
-                    data[2] *= mesh.color.b / 255 / 255;
-                    // Opacity is already normalized to 0-1
-                    data[3] *= mesh.opacity;
-                }
-            } satisfies VertexParameter<4>,
-        ];
 
         this.#defaultShader = createShaderFromDefaultTemplate(this, null, null, 2048 * 8, 2048 * 6);
 
@@ -273,13 +273,11 @@ export class Renderer {
                 { x: 0, y: h, u: 0, v: 0 }, // bottomleft
             ],
             [0, 1, 3, 1, 2, 3],
-            SCREEN_TEX,
-            COLOR_WHITE,
-            1,
-            null, // TODO: put postEffect shader in here
-            {},
-            BlendMode.NORMAL,
-            true
+            {
+                tex: SCREEN_TEX,
+                // TODO: put postEffect shader in here
+                fixed: true,
+            }
         ));
         this.#flush();
     }
@@ -288,32 +286,35 @@ export class Renderer {
         try { frameCb(); }
         finally { this.#endFrame(); }
     }
-    #sameGPUTexture(a: string | null, b: string | null) {
+    #sameGPUTexture(a: string | undefined, b: string | undefined) {
         const ta = this.#namedTextures.get(a!);
         const tb = this.#namedTextures.get(b!);
         if (!ta || !tb) return ta === tb;
         return ta[0] === tb[0];
     }
-    #sameMeshFormat(a: Mesh, b: Mesh) {
-        return a.fixed === b.fixed
-            && a.shader === b.shader
-            && a.blend === b.blend
-            && this.#sameGPUTexture(a.tex, b.tex)
-            && deepEqual(a.format, b.format)
-            && deepEqual(a.uniforms, b.uniforms);
+    #sameMeshFormat(a: Mesh<any>, b: Mesh<any>) {
+        const am = a.mod, bm = b.mod;
+        return (am === bm
+            || (
+                am.fixed === bm.fixed
+                && am.shader === bm.shader
+                && am.blend === bm.blend
+                && this.#sameGPUTexture(am.tex, bm.tex)
+                && deepEqual(am.uniforms, bm.uniforms)))
+            && deepEqual(a.format, b.format);
     }
-    #currentMeshForFormat: Mesh | null = null;
+    #currentMeshForFormat: Mesh<any> | null = null;
     #vertexDataQueue: number[] = [];
     #indexQueue: number[] = [];
     #chunkLengthsQueue: [vertices: number, indices: number][] = [];
-    drawMesh(mesh: Mesh) {
-        const { vertices, indices, tex, format } = mesh;
+    drawMesh(mesh: Mesh<any>) {
+        const { vertices, indices, format, mod } = mesh;
         if (!(vertices.length && indices.length)) return;
         // If it's the same everything, just append to the current queue
         // Otherwise, flush and start a new one
         if (this.#currentMeshForFormat && !this.#sameMeshFormat(mesh, this.#currentMeshForFormat)) this.#flush();
         this.#currentMeshForFormat = mesh;
-        const texQuad = this.#namedTextures.get(tex!)?.[1] ?? new Quad(0, 0, 1, 1);
+        const texQuad = this.#namedTextures.get(mod.tex!)?.[1] ?? new Quad(0, 0, 1, 1);
         const startVLength = this.#vertexDataQueue.length;
         const data: number[] = [];
         for (var v = 0; v < vertices.length; v++) {
@@ -324,7 +325,7 @@ export class Renderer {
                     const field = fields[i]!;
                     data.push(vertex[field] ?? (isNumber(fill) ? fill : fill?.[i] ?? 0));
                 }
-                transform?.(mesh, texQuad, data as any);
+                transform?.(data, mod, texQuad);
                 for (var i = 0; i < data.length; i++) this.#vertexDataQueue.push(data[i]!);
                 data.length = 0;
             }
@@ -337,11 +338,11 @@ export class Renderer {
         if (!this.#indexQueue.length || !this.#vertexDataQueue.length) return;
         const gl = this.gl;
         const { ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, TRIANGLES, UNSIGNED_SHORT } = gl;
-        const { shader, tex, fixed, uniforms, blend } = this.#currentMeshForFormat;
+        const { shader, tex, fixed, uniforms, blend } = this.#currentMeshForFormat.mod;
         const theShader = this.#namedShaders.get(shader!) ?? this.#defaultShader;
         const theTexture = this.#namedTextures.get(tex!)?.[0];
         theShader.bind();
-        theShader.send(uniforms);
+        if (uniforms) theShader.send(uniforms);
         theShader.send({
             screensize: [UniformType.VEC2, new Vec2(this.#width, this.#height)],
             camera: [UniformType.MAT4, fixed ? M4_IDENTITY : this.#camMatrix],
@@ -350,7 +351,7 @@ export class Renderer {
             u_tex: [UniformType.INT, 0],
         });
         theTexture?.bind();
-        this.#setBlend(blend);
+        this.#setBlend(blend ?? BlendMode.NORMAL);
         const { maxVertices, maxIndices } = theShader;
         const chunkLengths = this.#chunkLengthsQueue;
         const allVertices = this.#vertexDataQueue;
@@ -387,13 +388,14 @@ export class Renderer {
     #setBlend(blend: BlendMode) {
         const gl = this.gl;
         const { ZERO, ONE, ONE_MINUS_DST_COLOR, ONE_MINUS_SRC_ALPHA, DST_COLOR } = gl;
-        gl.blendFuncSeparate(...({
+        const bf = ({
             [BlendMode.NORMAL]: [ONE, ONE_MINUS_SRC_ALPHA, ONE, ONE_MINUS_SRC_ALPHA],
             [BlendMode.ADD]: [ONE, ONE, ONE, ONE_MINUS_SRC_ALPHA],
             [BlendMode.MULTIPLY]: [DST_COLOR, ZERO, ONE, ONE_MINUS_SRC_ALPHA],
             [BlendMode.SCREEN]: [ONE_MINUS_DST_COLOR, ONE, ONE, ONE_MINUS_SRC_ALPHA],
             [BlendMode.OVERLAY]: [DST_COLOR, ONE_MINUS_SRC_ALPHA, ONE, ONE_MINUS_SRC_ALPHA],
-        } as Record<BlendMode, Parameters<WebGL2RenderingContext["blendFuncSeparate"]>>)[blend]);
+        } satisfies Record<BlendMode, Parameters<WebGL2RenderingContext["blendFuncSeparate"]>>)[blend];
+        gl.blendFuncSeparate(bf[0], bf[1], bf[2], bf[3]);
     }
     destroy() {
         this.#cleanups.forEach(cleanup => cleanup());
