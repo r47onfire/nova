@@ -114,11 +114,15 @@ export class Renderer {
             [255, 255, 255, 1],
             (data, { color, opacity }) => {
                 if (color) {
-                    // Multiply the two and then normalize to 0-1
-                    data[0] *= color.r / 255 / 255;
-                    data[1] *= color.g / 255 / 255;
-                    data[2] *= color.b / 255 / 255;
+                    // Multiply the two
+                    data[0] *= color.r / 255;
+                    data[1] *= color.g / 255;
+                    data[2] *= color.b / 255;
                 }
+                // and then normalize to 0-1
+                data[0] /= 255;
+                data[1] /= 255;
+                data[2] /= 255;
                 // Opacity is already normalized to 0-1
                 if (opacity !== undefined) data[3] *= opacity;
             }
