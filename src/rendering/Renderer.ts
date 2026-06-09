@@ -102,7 +102,7 @@ export class Renderer {
         new VertexParameter(
             "a_uv",
             ["u", "v"],
-            -1, // -1 == OOB, for primitives that don't set uv
+            Infinity, // inf == OOB, for primitives that don't set uv
             (data, _mod, quad) => {
                 data[0] = quad.x + data[0] * quad.w;
                 data[1] = quad.y + data[1] * quad.h;
@@ -160,19 +160,21 @@ export class Renderer {
             throw new Error("WebGL 2 not supported (what?!)");
         }
         this.gl = gl;
+        const { TEXTURE_2D, FRAMEBUFFER, RENDERBUFFER, DITHER } = gl;
+        gl.enable(DITHER);
 
         this.#setFuncs = {
             [StackKind.TEXTURE_2D](tex) {
-                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.bindTexture(TEXTURE_2D, tex);
             },
             [StackKind.VAO](vao) {
                 gl.bindVertexArray(vao);
             },
             [StackKind.FRAME_BUFFER](fb) {
-                gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+                gl.bindFramebuffer(FRAMEBUFFER, fb);
             },
             [StackKind.RENDER_BUFFER](rb) {
-                gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+                gl.bindRenderbuffer(RENDERBUFFER, rb);
             },
             [StackKind.VIEWPORT](vp) {
                 if (!vp) return;
@@ -235,7 +237,7 @@ export class Renderer {
     // Private counter
     #drawCalls = 0;
     // Public mirror
-    drawCalls = 0;
+    lastDrawCalls = 0;
     #transformStack = from({ length: 32 }, () => new Mat23);
     #transformStackIndex = 0;
     #transform = new Mat23;
@@ -261,7 +263,7 @@ export class Renderer {
     }
     #endFrame() {
         this.#flush();
-        this.drawCalls = this.#drawCalls;
+        this.lastDrawCalls = this.#drawCalls;
         this.#frameBuffer.unbind();
         const gl = this.gl;
         const { drawingBufferWidth, drawingBufferHeight } = gl;
@@ -356,7 +358,7 @@ export class Renderer {
         });
         theTexture?.bind();
         this.#setBlend(blend ?? BlendMode.NORMAL);
-        const { maxVertices, maxIndices } = theShader;
+        const { maxVert: maxVertices, maxIndex: maxIndices } = theShader;
         const chunkLengths = this.#chunkLengthsQueue;
         const allVertices = this.#vertexDataQueue;
         const allIndices = this.#indexQueue;
@@ -409,11 +411,17 @@ export class Renderer {
         (this as any).gl = null;
         this.#cleanups.length = 0;
     }
+    /**
+     * @private
+     */
     addCleanup(cleanup: () => void) {
         this.#cleanups.push(cleanup);
     }
     #textureNumberMap = new Map<Texture, number>;
     #textureNumberCounter = 1;
+    /**
+     * @private
+     */
     textureNumber(texName: string): [number, Vec2 | null, Vec2 | null] {
         const texInfo = this.#namedTextures.get(texName);
         if (!texInfo) return [-1, null, null];

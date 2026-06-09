@@ -1,4 +1,3 @@
-import { keys } from "lib0/object";
 import { Renderer } from "../../rendering/Renderer";
 import { GameObj } from "../entity/GameObjType";
 
@@ -15,6 +14,7 @@ export class Comp {
     // }
     init(this: GameObj): void { }
     update(this: GameObj, dt: number): void { }
+    fixedUpdate(this: GameObj, dt: number): void { }
     draw(this: GameObj, renderer: Renderer): void { }
     cleanup(this: GameObj): void { }
     inspect(this: GameObj): string | undefined { return undefined; }

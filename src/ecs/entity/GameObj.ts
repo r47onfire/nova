@@ -216,8 +216,14 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         this.emit("update", dt);
         this.#drawLayerIndex = this.#layerIndex ?? (this.#parent ? this.#parent.#drawLayerIndex : this.GAME.layers.defaultIndex);
         this.#children.slice().forEach(c => c.update(dt));
-        this.#compStates.forEach(c => c.update?.(dt));
+        this.#compStates.forEach(c => c.update(dt));
         // TODO: sync appearance to meshes
+    }
+    fixedUpdate(dt: number) {
+        if (this.paused) return;
+        this.emit("fixedupdate", dt);
+        this.#children.slice().forEach(c => c.fixedUpdate(dt));
+        this.#compStates.forEach(c => c.fixedUpdate(dt));
     }
     /**
      * Draw this game object only using the components and the draw handlers,
@@ -293,7 +299,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         if (this.hidden) return;
         this.#children.forEach(c => c.drawInspect(renderer));
         renderer.transform = this.#transformMatrix;
-        this.emit("drawInspect", renderer);
+        this.emit("drawinspect", renderer);
     }
     #transformVersion = 0;
     #treeIndex = 0;
@@ -562,8 +568,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         return c;
     }
 
-    mod: RenderModifiers = {
-        tex: undefined,
+    mod: Omit<RenderModifiers, "tex"> = {
         color: new Color(255, 255, 255),
         opacity: 1,
         shader: undefined,

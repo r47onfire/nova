@@ -3,7 +3,6 @@ import fragTemplate from "./fragmentTemplate.glsl";
 import { Renderer, StackKind } from "./Renderer";
 import { VertexFormat } from "./vertex";
 import vertTemplate from "./vertexTemplate.glsl";
-import { StringMatrix } from "../utils/types";
 
 export enum UniformType {
     FLOAT,
@@ -53,19 +52,17 @@ export type Uniforms = Record<string, UniformEntry>;
 export class Shader<T extends VertexFormat<any>> {
     #renderer: Renderer;
     #glProgram: WebGLProgram;
-    #vertexFormat: T;
     #glVAO: WebGLVertexArrayObject;
     #glVBO: WebGLBuffer;
     #glIBO: WebGLBuffer;
     readonly stride: number;
 
-    constructor(renderer: Renderer, vert: string, frag: string, fmt: T, public maxVertices: number, public maxIndices: number) {
+    constructor(renderer: Renderer, public readonly vert: string, public readonly frag: string, public readonly vFmt: T, public maxVert: number, public maxIndex: number) {
         this.#renderer = renderer;
-        this.#vertexFormat = fmt;
         renderer.addCleanup(() => this.free());
         const gl = this.#renderer.gl;
-        const { VERTEX_SHADER, FRAGMENT_SHADER, LINK_STATUS, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, DYNAMIC_DRAW, FLOAT } = gl;
-        if (this.#vertexFormat.length > gl.getParameter(gl.MAX_VERTEX_ATTRIBS)) {
+        const { MAX_VERTEX_ATTRIBS, VERTEX_SHADER, FRAGMENT_SHADER, LINK_STATUS, ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, DYNAMIC_DRAW, FLOAT } = gl;
+        if (vFmt.length > gl.getParameter(MAX_VERTEX_ATTRIBS)) {
             throw new Error("too many attributes");
         }
         const vertShader = gl.createShader(VERTEX_SHADER);
@@ -99,19 +96,18 @@ export class Shader<T extends VertexFormat<any>> {
         this.#glProgram = prog;
 
         const vao = this.#glVAO = gl.createVertexArray()!;
-        const format = this.#vertexFormat;
-        const stride = this.stride = format.reduce((acc, param) => acc + param.fields.length, 0); // our stride is in floats, not bytes
+        const stride = this.stride = vFmt.reduce((acc, param) => acc + param.fields.length, 0); // our stride is in floats, not bytes
         this.#renderer.push(StackKind.VAO, vao);
         const vbo = this.#glVBO = gl.createBuffer();
         const ibo = this.#glIBO = gl.createBuffer();
         gl.bindBuffer(ARRAY_BUFFER, vbo);
-        gl.bufferData(ARRAY_BUFFER, 4 * maxVertices, DYNAMIC_DRAW);
+        gl.bufferData(ARRAY_BUFFER, 4 * maxVert, DYNAMIC_DRAW);
         gl.bindBuffer(ELEMENT_ARRAY_BUFFER, ibo);
-        gl.bufferData(ELEMENT_ARRAY_BUFFER, 4 * maxIndices, DYNAMIC_DRAW);
+        gl.bufferData(ELEMENT_ARRAY_BUFFER, 4 * maxIndex, DYNAMIC_DRAW);
         var offset = 0;
-        for (var i = 0; i < format.length; i++) {
+        for (var i = 0; i < vFmt.length; i++) {
             // For VAO
-            const { attr, fields } = format[i]!;
+            const { attr, fields } = vFmt[i]!;
             gl.enableVertexAttribArray(gl.getAttribLocation(prog, attr));
             gl.vertexAttribPointer(i, fields.length, FLOAT, false, stride * 4, offset * 4); // * 4 because WebGL stride is in bytes, not floats
             offset += fields.length;

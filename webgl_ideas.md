@@ -7,11 +7,10 @@
     * LoopController (for fixed updates and stuff)
         * SystemController
             * physics system uses @box2d/core
+                * possibly re-implementation of it to avoid duplicating linear algebra libs?
     * Renderer
-        * GLWrapper
         * defaultVertexFormat
         * draw(Mesh)
-        * ShaderManager
         * TextureManager
             * includes packing algorithm that stores list but DOESN'T pack until it's done loading a batch of items
             * handles text rasterization
@@ -21,7 +20,6 @@
                 * emissive map offsets
                 * bone matrix list
         * handles batching and buffer management
-        * there is no pushTransform() or popTransform() - only withTransform() absolute or relative to be contextual and preclude a forgotten
     * AssetManager
         * no buckets
         * Asset
@@ -33,7 +31,6 @@
     * RootObject
         * GameObj class similar to Kaplay's
             * base hooks:
-                * the draw() hook is passed a context with the current transformation - fixed() just forces it to be identity
                 * #drawTree() looks at components that set isMasked
                 * everything is using drawMesh internally
                     * the Mesh doesn't reference any GL internals.
@@ -43,7 +40,6 @@
                     * Mesh subclasses for primitives?
                 * #updateTransform() gets passed the parent matrix
                 * tick() gets passed the dt
-                * fixedTick() gets passed the fixedDt
             * components work the same way
                 * component hooks provide geometry() for physics and debug
             * TextComponent can be subclassed to allow its layout functions to be replaced with e.g. Pretext
@@ -51,6 +47,6 @@
     * InputManager
         * handles mouse, keyboard, gamepad, and touch input
         * maps button bindings
-        * can push and pop contexts with scenes and stuff
+        * can push and pop contexts with scenes and stuff?
     * SoundManager
         * separate gain node ports for sfx and music

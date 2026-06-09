@@ -1,5 +1,6 @@
 import { stringify } from "lib0/json";
 
+// TODO: generalize this for other stuff too, such as stick->button and button->stick defs to error on infinite recursion
 export const tsortComps = <T, U>(objects: T[], getID: (obj: T) => U, getDepended: (obj: T) => U[]): T[] => {
     const componentMap = new Map(objects.map(c => [getID(c), c]));
     const sorted: T[] = [];

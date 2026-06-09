@@ -3,10 +3,12 @@ import { Renderer } from "../../rendering/Renderer";
 export type GameObjEvents = {
     /** Triggered every frame while the object is unpaused, value is dt */
     update: number;
+    /** Triggered every fixed update tick while the object is unpaused, value is dt */
+    fixedupdate: number;
     /** Triggered every frame while the object is not hidden */
     draw: Renderer;
     /** Triggered every frame while the object is not hidden and inspect mode is on */
-    drawInspect: Renderer;
+    drawinspect: Renderer;
     /**
      * Triggered when object is added. NOTE: unlike KARLA, this event is sent *before*
      * all components and tags are added; then the "use"/"tag" event fires for those.
