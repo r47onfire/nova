@@ -344,8 +344,11 @@ export class Renderer {
         if (!this.#indexQueue.length || !this.#vertexDataQueue.length) return;
         const gl = this.gl;
         const { ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER, TRIANGLES, UNSIGNED_SHORT } = gl;
-        const { shader, tex, fixed, uniforms, blend } = this.#currentMeshForFormat.mod;
+        const { format, mod: { shader, tex, fixed, uniforms, blend } } = this.#currentMeshForFormat;
         const theShader = this.#namedShaders.get(shader!) ?? this.#defaultShader;
+        if (!deepEqual(format, theShader.vFmt)) {
+            throw new Error("Mesh vertex format and shader vertex format are different");
+        }
         const theTexture = this.#namedTextures.get(tex!)?.[0];
         theShader.bind();
         if (uniforms) theShader.send(uniforms);

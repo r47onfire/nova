@@ -214,7 +214,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
     update(dt: number) {
         if (this.paused) return;
         this.emit("update", dt);
-        this.#drawLayerIndex = this.#layerIndex ?? (this.#parent ? this.#parent.#drawLayerIndex : this.GAME.layers.defaultIndex);
+        this.#drawLayerIndex = this.#layerIndex ?? (this.#parent ? this.#parent.#drawLayerIndex : /*this.GAME.layers.defaultIndex*/0);
         this.#children.slice().forEach(c => c.update(dt));
         this.#compStates.forEach(c => c.update(dt));
         // TODO: sync appearance to meshes
@@ -262,6 +262,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         } else {
             renderer.pushMatrix(this.#transformMatrix);
             this.drawSelf(renderer);
+            // TODO: handle layers here
             objects.forEach(obj => {
                 if (obj.stencil !== Stencil.NONE) {
                     renderer.transform = obj.#parent!.#transformMatrix;
@@ -275,6 +276,8 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         }
     }
     #transformMatrix = new Mat23();
+    get transform(): Readonly<Mat23> { return this.#transformMatrix; }
+    set transform(m: Mat23) { Mat23_copyFrom(this.#transformMatrix, m); }
     /**
      * Gather debug info of all comps and tags
      */
@@ -298,7 +301,6 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
     drawInspect(renderer: Renderer) {
         if (this.hidden) return;
         this.#children.forEach(c => c.drawInspect(renderer));
-        renderer.transform = this.#transformMatrix;
         this.emit("drawinspect", renderer);
     }
     #transformVersion = 0;
@@ -306,10 +308,10 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
     #dirtyTransform() {
         this.#transformVersion = nextTransformVersion(this.GAME[TRANSFORM_VERSION_MANAGER_SYMBOL]);
     }
-    #transformTree(renderer: Renderer, force: boolean) {
+    #transformTree(renderer: Renderer, parentUpdated: boolean) {
         const tvm = this.GAME[TRANSFORM_VERSION_MANAGER_SYMBOL];
-        const localUpdateNeeded = transformNeedsUpdate(tvm, this.#transformVersion);
-        const updateNeeded = force || localUpdateNeeded;
+        const selfOutOfDate = transformNeedsUpdate(tvm, this.#transformVersion);
+        const updateNeeded = parentUpdated || selfOutOfDate;
         renderer.pushTransform();
         if (updateNeeded) {
             const t = renderer.transform;
@@ -318,7 +320,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
             Mat23_scaleSelfV(t, this.#scale);
             Mat23_skewSelfV(t, this.#skew);
             Mat23_copyFrom(this.#transformMatrix, t);
-            if (force && !localUpdateNeeded) this.#transformVersion = nextTransformVersion(tvm);
+            if (parentUpdated && !selfOutOfDate) this.#dirtyTransform();
         } else {
             renderer.transform = this.#transformMatrix;
         }
@@ -342,11 +344,6 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         this.#compIDs.add(compID);
         this.#compStates.set(compID, comp);
         const gc: (() => any)[] = this.#cleanups[compID] = [];
-        const initFunc = () => {
-            this.#onCurrentCompCleanups.push((e: any) => gc.push(e));
-            comp.init();
-            this.#onCurrentCompCleanups.pop();
-        };
         for (const name of allCompKeys(comp)) {
             const property = getPropertyDescriptor(comp, name);
             if (!property) continue;
@@ -367,9 +364,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
                 });
             }
             if (isCompDescriptor(name)) {
-                if (name === "init" && !this.exists()) {
-                    gc.push(this.on("add", initFunc).stop);
-                }
+                // do nothing, we already exist
             } else {
                 // @ts-expect-error
                 if (this[name] !== undefined) {
@@ -391,11 +386,10 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
                 gc.push(() => delete this[name as keyof this]);
             }
         }
+        this.#onCurrentCompCleanups.push((e: any) => gc.push(e));
+        comp.init();
+        this.#onCurrentCompCleanups.pop();
         gc.push(comp.cleanup);
-        if (this.exists()) {
-            // we are already added, this was a direct .use()
-            initFunc();
-        }
         this.emit("use", compID);
         this.GAME.emit("use", [this, compID]);
     }

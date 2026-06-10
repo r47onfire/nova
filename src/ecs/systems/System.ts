@@ -15,10 +15,9 @@ export abstract class System {
     afterFixedUpdate(dt: number) {}
 };
 
-export class ComponentSystem<T> extends System {
+export abstract class ComponentSystem<T> extends System {
     #compID: CompID;
     #eventHandlers: EventSubscriptionController[] = [];
-    protected objects = new Set<GameObj<T>>();
     constructor(component: CompID) {
         super();
         this.#compID = component;
@@ -26,16 +25,18 @@ export class ComponentSystem<T> extends System {
     init(game: Nova) {
         this.#eventHandlers.push(game.on("use", pair => {
             if (pair[1] === this.#compID) {
-                this.objects.add(pair[0] as any);
+                this.add(pair[0] as GameObj<T>);
             }
         }));
         this.#eventHandlers.push(game.on("unuse", pair => {
             if (pair[1] === this.#compID) {
-                this.objects.delete(pair[0] as any);
+                this.remove(pair[0] as GameObj<T>);
             }
         }));
     }
     destroy() {
         while (this.#eventHandlers.length) this.#eventHandlers.pop()!.stop();
     }
+    abstract add(obj: GameObj<T>): void;
+    abstract remove(obj: GameObj<T>): void;
 };
