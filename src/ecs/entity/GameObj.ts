@@ -23,10 +23,10 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
      * (e.g. {@link destroy()} has been called).
      */
     id: number | null;
-    readonly GAME: Nova;
+    readonly GAME: Nova<any, any, any>;
     name: string | undefined;
     constructor(
-        game: Nova,
+        game: Nova<any, any, any>,
         parent: GameObj,
         id: number,
         comps: Comp[],
@@ -36,7 +36,6 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         this.GAME = game;
         this.id = id;
         this.parent = parent;
-        game.emit("add", this);
         this.emit("add");
         for (const comp of tsortComps(comps, c => c.id, c => c.require)) {
             this.use(comp);
@@ -55,7 +54,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
      * Get or set the parent game object.
      */
     set parent(newParent: GameObj) {
-        if (this.id === null) this.GAME.bluescreen("can't re-parent destroyed object");
+        if (this.id === null) this.GAME.fatalError("can't re-parent destroyed object");
         if (this.#parent === newParent) return; // noop
         if (this.#parent) {
             const c: GameObj[] = this.#parent.#children;
@@ -110,7 +109,6 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         const eventName = newValue ? "pause" : "unpause";
         const recurse = (obj: GameObj, first = false) => {
             obj.emit(eventName);
-            this.GAME.emit(eventName, obj);
             if (obj.paused && !first) return;
             obj.children.forEach(c => recurse(c));
         };
@@ -121,7 +119,6 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         const eventName = newValue ? "hide" : "show";
         const recurse = (obj: GameObj, first = false) => {
             obj.emit(eventName);
-            this.GAME.emit(eventName, obj);
             if (obj.hidden && !first) return;
             obj.children.forEach(c => recurse(c));
         };
@@ -142,7 +139,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
      * @returns The added game object.
      */
     add<T extends Comp[]>(comps: [...T], tags: Tag[]): GameObj<T> {
-        if (this.id === null) this.GAME.bluescreen("can't add child to destroyed object");
+        if (this.id === null) this.GAME.fatalError("can't add child to destroyed object");
         return new GameObjRaw(this.GAME, this, id++, comps, tags) as GameObj<T>;
     }
     /**
@@ -168,7 +165,6 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         this.id = null;
         while (this.#children.length) this.#children.pop()!.destroy();
         [...this.#compStates.keys()].forEach(c => this.#removeComp(c));
-        this.GAME.emit("destroy", this);
         this.emit("destroy");
     }
     /**
@@ -219,11 +215,11 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         this.#compStates.forEach(c => c.update(dt));
         // TODO: sync appearance to meshes
     }
-    fixedUpdate(dt: number) {
+    fixedTick(dt: number) {
         if (this.paused) return;
         this.emit("fixedupdate", dt);
-        this.#children.slice().forEach(c => c.fixedUpdate(dt));
-        this.#compStates.forEach(c => c.fixedUpdate(dt));
+        this.#children.slice().forEach(c => c.fixedTick(dt));
+        this.#compStates.forEach(c => c.fixedTick(dt));
     }
     /**
      * Draw this game object only using the components and the draw handlers,
@@ -283,7 +279,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
      */
     inspect(): string[] {
         const lines: string[] = [];
-        for (const [id, comp] of this.#compStates) {
+        for (const { 0: id, 1: comp } of this.#compStates) {
             const c = comp.inspect();
             if (c) {
                 lines.push(`${id}: ${c}`);
@@ -369,7 +365,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
                 // @ts-expect-error
                 if (this[name] !== undefined) {
                     const originalComp = this.#compStates.values().find(c => name in c)?.id;
-                    this.GAME.bluescreen(
+                    this.GAME.fatalError(
                         originalComp
                             ? `while adding comp ${stringify(compID)}: duplicate property ${stringify(name)} originally added by comp ${stringify(originalComp)}`
                             : `illegal property ${stringify(name)} on comp ${stringify(compID)}`);
@@ -391,13 +387,11 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         this.#onCurrentCompCleanups.pop();
         gc.push(comp.cleanup);
         this.emit("use", compID);
-        this.GAME.emit("use", [this, compID]);
     }
     #removeComp(id: CompID) {
         this.#compIDs.delete(id);
         this.#compStates.delete(id);
         this.emit("unuse", id);
-        this.GAME.emit("unuse", [this, id]);
         if (this.#cleanups[id]) {
             this.#cleanups[id].forEach(c => c());
             delete this.#cleanups[id];
@@ -407,14 +401,14 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         for (var required of newlyAddedComp.require) {
             if (!this.#compIDs.has(required)) {
                 // TODO: auto-add if it's allowed?
-                this.GAME.bluescreen(`can't add ${stringify(newlyAddedComp.id)}: ${stringify(required)} is required but not yet added`);
+                this.GAME.fatalError(`can't add ${stringify(newlyAddedComp.id)}: ${stringify(required)} is required but not yet added`);
             }
         }
     }
     #checkDependents(id: CompID) {
         for (var comp of this.#compStates.values()) {
             if (comp.require && comp.require.includes(id)) {
-                this.GAME.bluescreen(`can't remove ${stringify(id)}}: it is required by ${stringify(comp.id)}`);
+                this.GAME.fatalError(`can't remove ${stringify(id)}}: it is required by ${stringify(comp.id)}`);
             }
         }
     }
@@ -433,7 +427,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
      */
     use<T extends Comp>(comp: T): asserts this is GameObj<T> {
         if (!comp || typeof comp !== "object") {
-            this.GAME.bluescreen(`invalid comp type "${typeof comp}"`);
+            this.GAME.fatalError(`invalid comp type "${typeof comp}"`);
         }
         if (comp.id && this.has(comp.id)) {
             this.#removeComp(comp.id);
@@ -513,7 +507,6 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         }
         this.#tags.add(tag);
         this.emit("tag", tag);
-        this.GAME.emit("tag", [this, tag]);
     }
     /**
      * Remove a tag(s) from the game obj.
@@ -536,7 +529,6 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         }
         this.#tags.delete(tag);
         this.emit("untag", tag);
-        this.GAME.emit("untag", [this, tag]);
     }
     /**
      * If there's certain tag(s) on the game obj.
@@ -560,6 +552,12 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         const c = super.on(name, action.bind(this));
         last(this.#onCurrentCompCleanups)?.(c.stop);
         return c;
+    }
+    emit<N extends keyof GameObjEvents>(name: N & (GameObjEvents[N] extends void ? N : never)): void;
+    emit<N extends keyof GameObjEvents>(name: N, arg: GameObjEvents[N]): void;
+    emit(name: string, arg?: any): void {
+        super.emit(name as any, arg);
+        this.GAME.emit(name as any, [this, arg]);
     }
 
     mod: Omit<RenderModifiers, "tex"> = {

@@ -3,7 +3,7 @@ import { GameObj } from "../entity/GameObjType";
 
 export type CompID = `${string}:${string}`;
 
-export class Comp {
+export abstract class Comp {
     constructor(public id: CompID, public require: CompID[] = []) {
         if (new.target === Comp) {
             throw new Error("can't instantiate Comp directly");
@@ -14,7 +14,7 @@ export class Comp {
     // }
     init(this: GameObj): void { }
     update(this: GameObj, dt: number): void { }
-    fixedUpdate(this: GameObj, dt: number): void { }
+    fixedTick(this: GameObj, dt: number): void { }
     draw(this: GameObj, renderer: Renderer): void { }
     cleanup(this: GameObj): void { }
     inspect(this: GameObj): string | undefined { return undefined; }

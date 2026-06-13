@@ -1,3 +1,4 @@
+import { isArray } from "lib0/array";
 import { GameObj } from "../ecs/entity/GameObjType";
 
 export const STOP_EVENT = Symbol("stop");
@@ -21,7 +22,7 @@ export class EventSubscriptionController {
     /**
      * The {@link GameObj} that this event is attached to.
      */
-    owner: GameObj<unknown> | null = null;
+    owner: GameObj | null = null;
     constructor(
         /**
          * Call to permanently stop the event handler being
@@ -31,16 +32,18 @@ export class EventSubscriptionController {
     ) { };
 }
 
+type EventCallback<TDetail> = (arg: TDetail) => (void | typeof STOP_EVENT);
+
 /**
  * Dispatcher for a single (unnamed) event.
  */
-export class SingleEvent<A> {
-    #cancelers = new WeakMap<(arg: A) => unknown, () => void>;
-    #handlers = new RemovableSet<(arg: A) => unknown>;
-    add(callback: (arg: A) => unknown): EventSubscriptionController {
-        const wrappedCallback = (arg: A) => {
+export class SingleEvent<T> {
+    #cancelers = new WeakMap<EventCallback<T>, () => void>;
+    #handlers = new RemovableSet<EventCallback<T>>;
+    add(callback: EventCallback<T>): EventSubscriptionController {
+        const wrappedCallback = (arg: T) => {
             if (controller.paused) return;
-            if (controller.owner && controller.owner.isPaused()) return;
+            if (controller.owner?.isPaused()) return;
             return callback(arg);
         };
         const cancel = this.#handlers.push(wrappedCallback);
@@ -48,17 +51,28 @@ export class SingleEvent<A> {
         this.#cancelers.set(wrappedCallback, cancel);
         return controller;
     }
-    addOnce(callback: (arg: A) => unknown): EventSubscriptionController {
-        const controller = this.add(arg => (controller.stop(), callback(arg)));
+    addF(filter: T extends [infer K, any] ? (K | K[]) : never, callback: T extends [any, infer A] ? EventCallback<A> : never): EventSubscriptionController {
+        return this.addP(((x: any) => equalOrIncludes(filter, x)) as any, callback);
+    }
+    addP(predicate: T extends [infer K, any] ? (x: K) => boolean : never, callback: T extends [any, infer A] ? EventCallback<A> : never): EventSubscriptionController {
+        return this.add((arg: any) => {
+            if (predicate(arg[0])) return callback(arg[1]);
+        });
+    }
+    add1(callback: (arg: T) => void): EventSubscriptionController {
+        const controller = this.add(arg => {
+            controller.stop();
+            callback(arg);
+        });
         return controller;
     }
-    next(): Promise<A> {
-        return new Promise(resolve => this.addOnce(resolve));
+    next(): Promise<T> {
+        return new Promise(resolve => this.add1(resolve));
     }
-    size() { return this.#handlers.size; }
+    get numListeners() { return this.#handlers.size; }
     clear() { this.#handlers.clear(); }
     /** Triggers the event */
-    fire(arg: A) {
+    fire(arg: T) {
         this.#handlers.forEach(callback => {
             const result = callback(arg);
             if (result === STOP_EVENT) this.#cancelers.get(callback)?.();
@@ -71,12 +85,20 @@ export class SingleEvent<A> {
  */
 export class EventDispatcher<E extends Record<string, any>> {
     #handlers: Partial<{ [N in keyof E]: SingleEvent<E[N]> }> = {};
+    #getSingleEvent<N extends keyof E>(name: N): SingleEvent<E[N]> {
+        return this.#handlers[name] ??= new SingleEvent;
+    }
     on<N extends keyof E>(name: N, action: (arg: E[N]) => void): EventSubscriptionController {
-        return (this.#handlers[name] ??= new SingleEvent).add(action);
+        return this.#getSingleEvent(name).add(action);
+    }
+    onF<N extends keyof E>(name: N, filter: E[N] extends [infer X, any] ? (X | X[]) : never, action: E[N] extends [any, infer Y] ? EventCallback<Y> : never) {
+        return this.#getSingleEvent(name).addF(filter, action);
+    }
+    onP<N extends keyof E>(name: N, predicate: E[N] extends [infer X, any] ? (x: X) => boolean : never, action: E[N] extends [any, infer Y] ? EventCallback<Y> : never) {
+        return this.#getSingleEvent(name).addP(predicate, action);
     }
     once<N extends keyof E>(name: N, action: (arg: E[N]) => void): EventSubscriptionController {
-        const controller = this.on(name, arg => (controller.stop(), action(arg)));
-        return controller;
+        return this.#getSingleEvent(name).add1(action);
     }
     next<N extends keyof E>(name: N): Promise<E[N]> {
         return new Promise(resolve => this.once(name, resolve));
@@ -87,10 +109,12 @@ export class EventDispatcher<E extends Record<string, any>> {
         this.#handlers[name]?.fire(arg);
     }
     /** Removes all the handlers for a given event name */
-    off(name: keyof E) {
-        delete this.#handlers[name];
-    }
+    off(name: keyof E) { delete this.#handlers[name]; }
     /** Removes the handlers for every event */
     clear() { this.#handlers = {}; }
-    size(name: keyof E) { return this.#handlers[name]?.size() ?? 0; }
+    numListeners(name: keyof E) { return this.#handlers[name]?.numListeners ?? 0; }
+}
+
+const equalOrIncludes = <T>(list: T | T[], value: any): boolean => {
+    return isArray(list) ? list.some(e => equalOrIncludes(e, value)) : list === value;
 }

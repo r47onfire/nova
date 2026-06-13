@@ -11,8 +11,8 @@ export abstract class System {
     afterUpdate(dt: number) {}
     beforeDraw(renderer: Renderer) {}
     afterDraw(renderer: Renderer) {}
-    beforeFixedUpdate(dt: number) {}
-    afterFixedUpdate(dt: number) {}
+    beforeFixedTick(dt: number) {}
+    afterFixedTick(dt: number) {}
 };
 
 export abstract class ComponentSystem<T> extends System {

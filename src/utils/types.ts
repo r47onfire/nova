@@ -9,4 +9,11 @@ type Expand<T> = T extends infer U ? {
 export type Tuple<T, N extends number> = N extends N ? number extends N ? T[] : _TupleOf<T, N, []> : never;
 type _TupleOf<T, N extends number, R extends unknown[]> = R["length"] extends N ? R : _TupleOf<T, N, [T, ...R]>;
 
+export type UniqueTuple<T extends string, N extends number, Acc extends T[] = []> =
+    Acc["length"] extends N
+    ? Acc
+    : {
+        [K in Exclude<T, Acc[number]>]: UniqueTuple<T, N, [...Acc, K]>
+    }[Exclude<T, Acc[number]>]
+
 export type StringMatrix = string[][];

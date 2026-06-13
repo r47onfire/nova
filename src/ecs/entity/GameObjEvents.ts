@@ -1,6 +1,6 @@
 import { Renderer } from "../../rendering/Renderer";
 
-export type GameObjEvents = {
+export interface GameObjEvents {
     /** Triggered every frame while the object is unpaused, value is dt */
     update: number;
     /** Triggered every fixed update tick while the object is unpaused, value is dt */

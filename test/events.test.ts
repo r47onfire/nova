@@ -27,9 +27,9 @@ test("can be cancelled", () => {
     const controller = event.add(handler);
     event.fire();
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(event.size()).toEqual(1);
+    expect(event.numListeners()).toEqual(1);
     controller.stop();
-    expect(event.size()).toEqual(0);
+    expect(event.numListeners()).toEqual(0);
     event.fire();
     expect(handler).toHaveBeenCalledTimes(1);
 });
@@ -38,7 +38,7 @@ test("single events", () => {
     const handler2 = mock();
     const event = new SingleEvent<void>();
     event.add(handler1)
-    event.addOnce(handler2);
+    event.add1(handler2);
     event.fire();
     event.fire();
     expect(handler1).toHaveBeenCalledTimes(2);

@@ -1,21 +1,22 @@
 import { COLOR_BLUE } from "@r47onfire/game-math";
+import { GameObjRaw } from "./ecs/entity/GameObj";
 import { GameObjEvents } from "./ecs/entity/GameObjEvents";
 import { GameObj } from "./ecs/entity/GameObjType";
-import { GameObjRaw } from "./ecs/entity/GameObj";
 import { GameObjVersionManager, TRANSFORM_VERSION_MANAGER_SYMBOL } from "./ecs/entity/VersionManager";
+import { System } from "./ecs/systems/System";
 import { EventDispatcher } from "./events";
 import { InputEvents, InputManager, InputManagerOptions } from "./input/InputManager";
+import { InputID } from "./input/types/bindingTypes";
 import { TimeController, TimeControllerOptions } from "./loop/TimeController";
 import { Mesh } from "./rendering/Mesh";
 import { Renderer, RendererOptions } from "./rendering/Renderer";
-import { System } from "./ecs/systems/System";
 export * from "@r47onfire/game-math";
 
-export interface NovaOptions extends RendererOptions, InputManagerOptions, TimeControllerOptions {
+export interface NovaOptions<TButton extends InputID, TStick extends InputID, TPointer extends InputID> extends RendererOptions, InputManagerOptions<TButton, TStick, TPointer>, TimeControllerOptions {
 
 }
 
-type GlobalEvents = {
+export interface GlobalEvents<TButton extends InputID, TStick extends InputID, TPointer extends InputID> extends WithObject<GameObjEvents>, InputEvents<TButton, TStick, TPointer> {
     loaded: void;
     loaderror: [resourceID: string, failure: any];
     loadprogress: [loaded: number, toLoad: number];
@@ -29,29 +30,27 @@ type GlobalEvents = {
     afterdraw: Renderer;
     beforefixedtick: number;
     afterfixedtick: number;
-} & WithObject<GameObjEvents> & InputEvents;
+}
 
-type WithObject<T> = { [K in keyof T]: T[K] extends void ? GameObj : [GameObj, T[K]] };
+type WithObject<T> = { [K in keyof T]: [GameObj, T[K]] };
 
-export default class Nova extends EventDispatcher<GlobalEvents> {
-    readonly renderer: Renderer;
+export default class Nova<TButton extends InputID, TStick extends InputID, TPointer extends InputID> extends EventDispatcher<GlobalEvents<TButton, TStick, TPointer>> {
+    readonly gfx: Renderer;
     #timeController: TimeController;
-    #inputManager: InputManager;
+    input: InputManager<TButton, TStick, TPointer>;
     [TRANSFORM_VERSION_MANAGER_SYMBOL] = new GameObjVersionManager();
-    #inputEventQueue: { [K in keyof GlobalEvents]: [K, GlobalEvents[K]] }[keyof GlobalEvents][] = [];
     #systems: [name: string, sys: System][] = [];
     root: GameObj<any>;
-    constructor(options: NovaOptions) {
+    constructor(options: NovaOptions<TButton, TStick, TPointer>) {
         super();
-        this.renderer = new Renderer(
-            options,
-            () => this.#queueInputEvent("resize"),
-        );
         this.#timeController = new TimeController(options);
-        this.#inputManager = new InputManager(
+        this.input = new InputManager(
+            this,
             options,
-            this.renderer.canvas,
-            (name, arg) => this.#queueInputEvent(name, arg),
+            this.gfx = new Renderer(
+                options,
+                () => this.once("beforeupdate", () => this.emit("resize")),
+            ),
         );
         this.root = new GameObjRaw(this, null as any, 0, [], []);
         this.#timeController.start(
@@ -59,14 +58,15 @@ export default class Nova extends EventDispatcher<GlobalEvents> {
             dt => this.#frameMain(dt),
         );
     }
-    #queueInputEvent<N extends keyof GlobalEvents>(name: N & (GlobalEvents[N] extends void ? N : never)): void;
-    #queueInputEvent<N extends keyof GlobalEvents>(name: N, arg: GlobalEvents[N]): void;
-    #queueInputEvent(name: keyof GlobalEvents, arg?: any) {
-        this.#inputEventQueue.push([name, arg] as any);
-    }
-    bluescreen(err: any): never {
+    quit() {
         this.#timeController.shouldStop = true;
-        this.renderer.backgroundColor = COLOR_BLUE;
+        this.root.destroy();
+        this.input.destroy();
+        this.gfx.destroy();
+    }
+    fatalError(err: any): never {
+        this.#timeController.shouldStop = true;
+        this.gfx.backgroundColor = COLOR_BLUE;
         // TODO: draw bluescreen
         const error = err instanceof Error ? err : new Error(String(err));
         this.emit("error", error);
@@ -74,8 +74,7 @@ export default class Nova extends EventDispatcher<GlobalEvents> {
     }
     #frameMain(dt: number) {
         try {
-            this.#drainInputEventQueue();
-            // Update systems
+            this.input.update();
             // Update root object
             this.emit("beforeupdate", dt);
             this.#systems.forEach(pair => pair[1].beforeUpdate(dt));
@@ -83,10 +82,11 @@ export default class Nova extends EventDispatcher<GlobalEvents> {
             this.#systems.forEach(pair => pair[1].afterUpdate(dt));
             this.emit("afterupdate", dt);
             // Draw
-            const r = this.renderer;
+            const r = this.gfx;
             r.doFrame(() => {
                 this.emit("beforedraw", r);
                 this.#systems.forEach(pair => pair[1].beforeDraw(r));
+                // TODO: transform root, draw root
                 r.drawMesh(new Mesh(
                     r.defaultVertexFormat,
                     [
@@ -111,20 +111,24 @@ export default class Nova extends EventDispatcher<GlobalEvents> {
                 this.emit("afterdraw", r);
             });
         } catch (e) {
-            this.bluescreen(e);
+            this.fatalError(e);
         }
     }
     #fixedTick(dt: number) {
         try {
             this.emit("beforefixedtick", dt);
-            this.#systems.forEach(pair => pair[1].beforeFixedUpdate(dt));
-            this.root.fixedUpdate(dt);
-            this.#systems.forEach(pair => pair[1].afterFixedUpdate(dt));
+            this.#systems.forEach(pair => pair[1].beforeFixedTick(dt));
+            this.root.fixedTick(dt);
+            this.#systems.forEach(pair => pair[1].afterFixedTick(dt));
             this.emit("afterfixedtick", dt);
         } catch (e) {
-            this.bluescreen(e);
+            this.fatalError(e);
         }
     }
-    #drainInputEventQueue() {
+    system(name: string, implementation: System) {
+
+        const index = this.#systems.findIndex(i => i[0] === name);
+        if (index < 0) this.#systems.push([name, implementation]);
+        else this.#systems[index]![1] = implementation;
     }
 }
