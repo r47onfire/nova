@@ -89,7 +89,7 @@ export class ButtonDetector<TButton extends InputID> {
     #currentValues = new Map<Input, number>();
     #trackingValues = new Map<Input, Set<TButton>>();
     values = new Map<TButton, number>();
-    result!: [pressed: TButton[], released: TButton[], down: Map<TButton, number>];
+    result: [pressed: TButton[], released: TButton[], down: Map<TButton, number>] = [[], [], new Map];
     send(input: Input, value: number) {
         const oldValue = this.#currentValues.get(input) ?? 0;
         this.#currentValues.set(input, value)
