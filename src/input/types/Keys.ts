@@ -67,7 +67,6 @@ export const KEYS = [
     "key/alt",
     "key/meta",
     "key/space",
-    "key/ ",
     "key/left",
     "key/right",
     "key/up",

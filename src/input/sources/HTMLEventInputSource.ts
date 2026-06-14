@@ -1,29 +1,15 @@
-import { InputSourceSemanticType } from "../types/bindingTypes";
-import { InputEventEntry, InputSource, InputType } from "../types/InputSource";
+import { InputSource } from "./InputSource";
 
 export type EventList<M> = {
     [event in keyof M]?: (event: M[event]) => void;
 };
 
-export abstract class HTMLEventInputSource implements InputSource {
+export abstract class HTMLEventInputSource extends InputSource {
     constructor(protected canvas: HTMLCanvasElement) {
+        super();
+    }
+    protected bind() {
         this.#bindOrUnbind("addEventListener");
-        this.poll();
-    }
-    abstract readonly semType: InputSourceSemanticType;
-    abstract options: InputSource["options"];
-    #queues!: { [K in InputType]: InputEventEntry<K>[] };
-    poll(): { [K in InputType]: InputEventEntry<K>[] } {
-        const temp = this.#queues;
-        this.#queues = {
-            [InputType.SCALAR]: [],
-            [InputType.DIRECTION]: [],
-            [InputType.POINTER]: [],
-        };
-        return temp;
-    }
-    protected queue<T extends InputType>(type: T, data: InputEventEntry<T>) {
-        this.#queues[type].push(data);
     }
     protected canvasEv: EventList<HTMLElementEventMap> = {};
     protected docEv: EventList<DocumentEventMap> = {};

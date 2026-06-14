@@ -9,6 +9,11 @@ import { BlendMode, createShaderFromDefaultTemplate, Shader, UniformType } from 
 import { Stencil } from "./stencil";
 import { TexFilter, Texture, TexWrapMode } from "./Texture";
 import { VertexParameter } from "./vertex";
+import Nova from "..";
+
+export interface RendererEvents {
+    resize: void;
+}
 
 /**
  * Options for setting up the renderer
@@ -83,10 +88,12 @@ export class Renderer {
     #frameBuffer!: FrameBuffer;
     #width = -1;
     #height = -1;
+    #didResize = false;
     #canvasScaleX = -1;
     #canvasScaleY = -1;
     #resizeObserver: ResizeObserver;
     backgroundColor: Color;
+    #game: Nova;
     readonly defaultVertexFormat = [
         new VertexParameter(
             "a_pos",
@@ -128,7 +135,8 @@ export class Renderer {
             }
         ),
     ] as const;
-    constructor(options: RendererOptions, onResizedCallback: () => void) {
+    constructor(game: Nova<any, any, any>, options: RendererOptions) {
+        this.#game = game;
         this.#pixelDensity = options.pixelDensity ?? min(devicePixelRatio, 2);
         this.#scale = options.scale ?? 1;
         this.defTexFilter = options.texFilter ?? TexFilter.NEAREST;
@@ -198,7 +206,6 @@ export class Renderer {
             lastWidth = canvas.offsetWidth;
             lastHeight = canvas.offsetHeight;
             this.#resizeFrameBuffer();
-            onResizedCallback();
         })).observe(canvas);
 
         this.backgroundColor = options.background ?? COLOR_BLACK;
@@ -219,6 +226,7 @@ export class Renderer {
         this.#frameBuffer = new FrameBuffer(this, fbTex);
         this.#width = canvas.offsetWidth / scale;
         this.#height = canvas.offsetHeight / scale;
+        this.#didResize = true;
     }
     push<K extends StackKind>(kind: K, entry: StackElementType<K>) {
         (this.#stacks[kind] ??= [] as any[]).push(entry);
@@ -260,6 +268,10 @@ export class Renderer {
         // Clear active transform
         this.#transformStackIndex = 0;
         this.transform = M23_IDENTITY;
+        if (this.#didResize) {
+            this.#didResize = false;
+            this.#game.emit("resize");
+        }
     }
     #endFrame() {
         this.#flush();
@@ -496,5 +508,14 @@ export class Renderer {
     pushMatrix(m: Mat23) {
         this.pushTransform();
         Mat23_copyFrom(this.#transform, m);
+    }
+    canvasToScreen(cssPt: Vec2) {
+        const { drawingBufferHeight, drawingBufferWidth } = this.gl;
+        const viewportWidth = drawingBufferWidth / this.#pixelDensity;
+        const viewportHeight = drawingBufferHeight / this.#pixelDensity;
+        return new Vec2(
+            cssPt.x * this.#canvasScaleX * this.#width / viewportWidth,
+            cssPt.y * this.#canvasScaleY * this.#height / viewportHeight,
+        );
     }
 }

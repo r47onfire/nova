@@ -4,14 +4,14 @@ import { stringify } from "lib0/json";
 import Nova from "../..";
 import { EventDispatcher, EventSubscriptionController } from "../../events";
 import { Renderer } from "../../rendering/Renderer";
-import { BlendMode, Uniforms } from "../../rendering/Shader";
+import { RenderModifiers } from "../../rendering/RenderModifiers";
+import { BlendMode } from "../../rendering/Shader";
 import { Stencil } from "../../rendering/stencil";
-import { allCompKeys, AlreadyBoundComp, Comp, getPropertyDescriptor, isCompDescriptor, type CompID } from "../components/Comp";
 import { tsortComps } from "../../utils/tsort";
+import { allCompKeys, AlreadyBoundComp, Comp, getPropertyDescriptor, isCompDescriptor, type CompID } from "../components/Comp";
 import { type GameObjEvents } from "./GameObjEvents";
 import { type GameObj } from "./GameObjType";
 import { nextTransformVersion, nextTreeIndex, TRANSFORM_VERSION_MANAGER_SYMBOL, transformNeedsUpdate } from "./VersionManager";
-import { RenderModifiers } from "../../rendering/RenderModifiers";
 
 export type Tag = `#${string}:${string}`;
 
@@ -23,7 +23,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
      * (e.g. {@link destroy()} has been called).
      */
     id: number | null;
-    readonly GAME: Nova<any, any, any>;
+    readonly GAME: Nova;
     name: string | undefined;
     constructor(
         game: Nova<any, any, any>,

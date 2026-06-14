@@ -1,64 +1,64 @@
-import { Vec2, Vec2_set } from "@r47onfire/game-math";
+import { V2_ZERO, Vec2, Vec2_set } from "@r47onfire/game-math";
 import { isString } from "lib0/function";
 import { Input, InputID, VirtualDirectionalInput } from "./types/bindingTypes";
 
 export class DirectionalInputMerger<TButton extends InputID, TStick extends InputID, TPointer extends InputID> {
-    #vdiStates: Partial<Record<TStick, Required<VirtualDirectionalInput<number>>>> = {};
-    #vdiMap: Partial<Record<TButton, [TStick, keyof VirtualDirectionalInput<any>]>> = {};
+    #vdiStates = new Map<TStick, Required<VirtualDirectionalInput<number>>>();
+    #vdiMap = new Map<TButton, [TStick, keyof VirtualDirectionalInput<any>]>();
     #posBindings = new Map<Input, TPointer>();
     #dirBindings = new Map<Input, TStick>();
     #curDirBindings = new Map<TStick, (Input | VirtualDirectionalInput<TButton>)[]>();
     #curPosBindings = new Map<TPointer, Input[]>();
-    bindDir(button: TStick, bindings: (Input | VirtualDirectionalInput<TButton>)[]) {
-        this.values[0][button] = new Vec2();
-        const oldBindings = this.#curDirBindings.get(button);
+    bindDir(stick: TStick, bindings: (Input | VirtualDirectionalInput<TButton>)[]) {
+        this.deltas.set(stick, new Vec2);
+        const oldBindings = this.#curDirBindings.get(stick);
         if (oldBindings) {
             for (var binding of oldBindings) {
                 if (isString(binding)) {
                     this.#dirBindings.delete(binding);
                 } else {
-                    delete this.#vdiStates[button];
-                    if (binding.up) delete this.#vdiMap[binding.up];
-                    if (binding.down) delete this.#vdiMap[binding.down];
-                    if (binding.left) delete this.#vdiMap[binding.left];
-                    if (binding.right) delete this.#vdiMap[binding.right];
+                    this.#vdiStates.delete(stick);
+                    if (binding.up) this.#vdiMap.delete(binding.up);
+                    if (binding.down) this.#vdiMap.delete(binding.down);
+                    if (binding.left) this.#vdiMap.delete(binding.left);
+                    if (binding.right) this.#vdiMap.delete(binding.right);
                 }
             }
         }
-        this.#curDirBindings.set(button, bindings);
+        this.#curDirBindings.set(stick, bindings);
         for (var binding of bindings) {
             if (isString(binding)) {
-                this.#dirBindings.set(binding, button);
+                this.#dirBindings.set(binding, stick);
             } else {
-                this.#vdiStates[button] = { up: 0, down: 0, left: 0, right: 0 };
-                if (binding.up) this.#vdiMap[binding.up] = [button, "up"];
-                if (binding.down) this.#vdiMap[binding.down] = [button, "down"];
-                if (binding.left) this.#vdiMap[binding.left] = [button, "left"];
-                if (binding.right) this.#vdiMap[binding.right] = [button, "right"];
+                this.#vdiStates.set(stick, { up: 0, down: 0, left: 0, right: 0 });
+                if (binding.up) this.#vdiMap.set(binding.up, [stick, "up"]);
+                if (binding.down) this.#vdiMap.set(binding.down, [stick, "down"]);
+                if (binding.left) this.#vdiMap.set(binding.left, [stick, "left"]);
+                if (binding.right) this.#vdiMap.set(binding.right, [stick, "right"]);
             }
         }
     }
-    bindPos(button: TPointer, bindings: Input[]) {
-        this.values[1][button] = new Vec2();
-        const oldBindings = this.#curPosBindings.get(button);
+    bindPos(pointer: TPointer, bindings: Input[]) {
+        this.positions.set(pointer, new Vec2);
+        const oldBindings = this.#curPosBindings.get(pointer);
         if (oldBindings) {
             for (var binding of oldBindings) {
                 this.#posBindings.delete(binding);
             }
         }
-        this.#curPosBindings.set(button, bindings);
+        this.#curPosBindings.set(pointer, bindings);
         for (var binding of bindings) {
-            this.#posBindings.set(binding, button);
+            this.#posBindings.set(binding, pointer);
         }
     }
     sendBtn(button: TButton, value: number) {
-        const target = this.#vdiMap[button];
+        const target = this.#vdiMap.get(button);
         if (target) {
             const { 0: stick, 1: dir } = target;
-            const state = this.#vdiStates[stick]!;
+            const state = this.#vdiStates.get(stick)!;
             state[dir] = value;
             Vec2_set(
-                this.values[0][stick] ??= new Vec2(),
+                this.deltas.get(stick)!,
                 state.right - state.left,
                 state.up - state.down
             );
@@ -67,21 +67,24 @@ export class DirectionalInputMerger<TButton extends InputID, TStick extends Inpu
     sendDir(input: Input, value: Vec2) {
         const btn = this.#dirBindings.get(input);
         if (btn) {
-            this.values[0][btn] = value;
+            this.deltas.set(btn, value);
         }
     }
     sendPtr(input: Input, value: Vec2) {
         const btn = this.#posBindings.get(input);
         if (btn) {
-            this.values[1][btn] = this.moved[btn] = value;
+            this.positions.set(btn, value);
+            this.moved.set(btn, value);
         }
     }
-    moved!: Partial<Record<TPointer, Vec2>>;
-    values: [directional: Partial<Record<TStick, Readonly<Vec2>>>, positional: Partial<Record<TPointer, Readonly<Vec2>>>] = [{}, {}];
+    moved = new Map<TPointer, Vec2>();
+    deltas = new Map<TStick, Readonly<Vec2>>();
+    positions = new Map<TPointer, Readonly<Vec2>>();
     reset() {
-        this.moved = {};
-    }
-    constructor() {
-        this.reset();
+        const { moved, deltas } = this;
+        // Empty the moved list of everything that moved
+        moved.clear();
+        // Zero the delta values, but don't delete them
+        deltas.forEach((_, key) => deltas.set(key, V2_ZERO));
     }
 }

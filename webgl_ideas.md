@@ -6,8 +6,8 @@
 * Game
     * LoopController (for fixed updates and stuff)
         * SystemController
-            * physics system uses @box2d/core
-                * possibly re-implementation of it to avoid duplicating linear algebra libs?
+            * re-implementation of box2d to avoid duplicating linear algebra libs
+                * 
     * Renderer
         * defaultVertexFormat
         * draw(Mesh)
@@ -50,3 +50,9 @@
         * can push and pop contexts with scenes and stuff?
     * SoundManager
         * separate gain node ports for sfx and music
+
+other things
+
+* pixelation and edge enhance shaders: <https://github.com/KodyJKing/hello-threejs/blob/main/src/RenderPixelatedPass.ts>
+
+* fluids: @box2d/particles <https://github.com/Lusito/box2d.ts/tree/master/packages/particles>

@@ -2,6 +2,7 @@ import { UniqueTuple } from "../../utils/types";
 import { GamepadButton, GamepadStick } from "./Gamepad";
 import { Key } from "./Keys";
 import { MouseButton, MouseInput } from "./Mouse";
+import { TouchInput, TouchPosInput } from "./Touch";
 
 export type InputID = `${string}:${string}`;
 
@@ -16,6 +17,7 @@ export interface InputMap {
     keyboard: Key,
     mouse: MouseButton | MouseInput,
     gamepad: GamepadButton | GamepadStick,
+    touch: TouchInput | TouchPosInput,
 }
 
 export type InputSourceSemanticType = keyof InputMap;

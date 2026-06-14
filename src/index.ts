@@ -7,23 +7,22 @@ import { System } from "./ecs/systems/System";
 import { EventDispatcher } from "./events";
 import { InputEvents, InputManager, InputManagerOptions } from "./input/InputManager";
 import { InputID } from "./input/types/bindingTypes";
-import { TimeController, TimeControllerOptions } from "./loop/TimeController";
+import { TimeController, TimeControllerEvents, TimeControllerOptions } from "./loop/TimeController";
 import { Mesh } from "./rendering/Mesh";
-import { Renderer, RendererOptions } from "./rendering/Renderer";
+import { Renderer, RendererEvents, RendererOptions } from "./rendering/Renderer";
 export * from "@r47onfire/game-math";
 
 export interface NovaOptions<TButton extends InputID, TStick extends InputID, TPointer extends InputID> extends RendererOptions, InputManagerOptions<TButton, TStick, TPointer>, TimeControllerOptions {
 
 }
 
-export interface GlobalEvents<TButton extends InputID, TStick extends InputID, TPointer extends InputID> extends WithObject<GameObjEvents>, InputEvents<TButton, TStick, TPointer> {
+export interface GlobalEvents<TButton extends InputID, TStick extends InputID, TPointer extends InputID> extends RendererEvents, TimeControllerEvents, WithObject<GameObjEvents>, InputEvents<TButton, TStick, TPointer> {
     loaded: void;
     loaderror: [resourceID: string, failure: any];
     loadprogress: [loaded: number, toLoad: number];
     error: Error;
     sceneLeave: string;
     sceneEnter: string;
-    resize: void;
     beforeupdate: number;
     afterupdate: number;
     beforedraw: Renderer;
@@ -34,7 +33,7 @@ export interface GlobalEvents<TButton extends InputID, TStick extends InputID, T
 
 type WithObject<T> = { [K in keyof T]: [GameObj, T[K]] };
 
-export default class Nova<TButton extends InputID, TStick extends InputID, TPointer extends InputID> extends EventDispatcher<GlobalEvents<TButton, TStick, TPointer>> {
+export default class Nova<TButton extends InputID = InputID, TStick extends InputID = InputID, TPointer extends InputID = InputID> extends EventDispatcher<GlobalEvents<TButton, TStick, TPointer>> {
     readonly gfx: Renderer;
     #timeController: TimeController;
     input: InputManager<TButton, TStick, TPointer>;
@@ -43,23 +42,22 @@ export default class Nova<TButton extends InputID, TStick extends InputID, TPoin
     root: GameObj<any>;
     constructor(options: NovaOptions<TButton, TStick, TPointer>) {
         super();
-        this.#timeController = new TimeController(options);
         this.input = new InputManager(
             this,
             options,
             this.gfx = new Renderer(
+                this,
                 options,
-                () => this.once("beforeupdate", () => this.emit("resize")),
             ),
         );
         this.root = new GameObjRaw(this, null as any, 0, [], []);
-        this.#timeController.start(
+        (this.#timeController = new TimeController(this, options)).start(
             dt => this.#fixedTick(dt),
             dt => this.#frameMain(dt),
         );
     }
     quit() {
-        this.#timeController.shouldStop = true;
+        this.#timeController.destroy();
         this.root.destroy();
         this.input.destroy();
         this.gfx.destroy();

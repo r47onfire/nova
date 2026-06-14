@@ -11,6 +11,7 @@ export class ButtonDetector<TButton extends InputID> {
     #committers = new Map<Input, [toCheck: Set<Input>, buttonsMap: Map<TButton, Input[]>]>();
     #buttonsUsed = new Set<TButton>();
     bind(button: TButton, bindings: ButtonCombo[]) {
+        console.log("binding button", button, bindings);
         // clear out old binding
         const modsToClear = new Set<Input>();
         for (var { 0: check, 1: btns } of this.#committers.values()) {
@@ -44,6 +45,7 @@ export class ButtonDetector<TButton extends InputID> {
         }
         // cleanup
         modsToClear.forEach(m => this.#mods.delete(m));
+        console.log({ committers: this.#committers, mods: this.#mods });
     }
     /**
      * Returns the names of the buttons that were triggered by this input being pressed.
@@ -84,33 +86,37 @@ export class ButtonDetector<TButton extends InputID> {
         }
         return canceledButtons;
     }
-    #currentValues: Partial<Record<Input, number>> = {};
-    #trackingValues: Partial<Record<Input, Set<TButton>>> = {};
-    values: Partial<Record<TButton, number>> = {};
-    result!: [pressed: TButton[], released: TButton[], down: Partial<Record<TButton, number>>];
+    #currentValues = new Map<Input, number>();
+    #trackingValues = new Map<Input, Set<TButton>>();
+    values = new Map<TButton, number>();
+    result!: [pressed: TButton[], released: TButton[], down: Map<TButton, number>];
     send(input: Input, value: number) {
-        const oldValue = this.#currentValues[input] ?? 0;
-        this.#currentValues[input] = value;
-        const { 0: pressed, 1: released, 2: down } = this.result;
+        const oldValue = this.#currentValues.get(input) ?? 0;
+        this.#currentValues.set(input, value)
+        const { values, result: { 0: pressed, 1: released, 2: down } } = this;
         if (value > 0 && oldValue <= 0) {
             const werePressed = this.#press(input);
             for (var item of werePressed) {
-                (this.#trackingValues[input] ??= new Set).add(item);
+                this.#trackingValues.getOrInsertComputed(input, () => new Set()).add(item);
                 pressed.push(item);
             }
         } else if (value <= 0 && oldValue > 0) {
             const wereReleased = this.#release(input);
             for (var item of wereReleased) {
-                this.#trackingValues[input]?.delete(item);
-                down[item] = this.values[item] = value;
+                this.#trackingValues.get(input)?.delete(item);
+                down.set(item, value);
+                values.set(item, value);
                 released.push(item);
             }
         }
-        this.#trackingValues[input]?.forEach(b => {
-            down[b] = this.values[b] = value;
+        this.#trackingValues.get(input)?.forEach(b => {
+            down.set(b, value);
+            values.set(b, value);
         });
     }
     reset() {
-        this.result = [[], [], {}];
+        const { 0: pressed, 1: released, 2: down } = this.result;
+        pressed.length = released.length = 0;
+        down.clear();
     }
 }
