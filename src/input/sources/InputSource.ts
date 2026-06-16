@@ -8,7 +8,7 @@ export const enum InputType {
 }
 
 export type InputEventEntry<T extends InputType> = [
-    semanticType: InputSourceSemanticType,
+    semanticType: InputSourceSemanticType | undefined,
     name: Input,
     value: {
         [InputType.SCALAR]: number,

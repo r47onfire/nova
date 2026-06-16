@@ -12,13 +12,11 @@ export interface TouchSourceOptions {
 
 export class TouchSource extends QueuedHTMLEventInputSource {
     #renderer: Renderer;
-    #touchToMouse: boolean = true;
+    #touchToMouse: boolean;
     constructor(renderer: Renderer, options: TouchSourceOptions) {
         super(renderer.canvas);
         this.#renderer = renderer;
-        if (options.touchToMouse) {
-            this.#touchToMouse = options.touchToMouse;
-        }
+        this.#touchToMouse = options.touchToMouse ?? true;
         this.bind();
     }
     #identifierIndex = new Map<number, number>();

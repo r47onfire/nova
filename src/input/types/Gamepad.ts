@@ -23,7 +23,16 @@ export const GAMEPAD_BUTTONS = [
 export const GAMEPAD_STICKS = [
     "gamepad/left",
     "gamepad/right",
+    "gamepad/touch_delta0",
+    "gamepad/touch_delta1",
 ] as const satisfies `gamepad/${string}`[];
 
-export type GamepadButton = (typeof GAMEPAD_BUTTONS)[number];
-export type GamepadStick = (typeof GAMEPAD_STICKS)[number];
+export const GAMEPAD_ABS = [
+    "gamepad/touch_finger0",
+    "gamepad/touch_finger1",
+] as const satisfies `gamepad/${string}`[];
+
+type OrWithIndex<T extends string> = T | `${T}:${number}`;
+
+export type GamepadButton = OrWithIndex<(typeof GAMEPAD_BUTTONS)[number]>;
+export type GamepadStick = OrWithIndex<(typeof GAMEPAD_STICKS)[number] | (typeof GAMEPAD_ABS)[number]>;

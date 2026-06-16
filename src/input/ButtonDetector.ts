@@ -11,7 +11,6 @@ export class ButtonDetector<TButton extends InputID> {
     #committers = new Map<Input, [toCheck: Set<Input>, buttonsMap: Map<TButton, Input[]>]>();
     #buttonsUsed = new Set<TButton>();
     bind(button: TButton, bindings: ButtonCombo[]) {
-        console.log("binding button", button, bindings);
         // clear out old binding
         const modsToClear = new Set<Input>();
         for (var { 0: check, 1: btns } of this.#committers.values()) {
@@ -92,7 +91,7 @@ export class ButtonDetector<TButton extends InputID> {
     result: [pressed: TButton[], released: TButton[], down: Map<TButton, number>] = [[], [], new Map];
     send(input: Input, value: number) {
         const oldValue = this.#currentValues.get(input) ?? 0;
-        this.#currentValues.set(input, value)
+        this.#currentValues.set(input, value);
         const { values, result: { 0: pressed, 1: released, 2: down } } = this;
         if (value > 0 && oldValue <= 0) {
             const werePressed = this.#press(input);

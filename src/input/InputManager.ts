@@ -4,6 +4,7 @@ import Nova from "..";
 import { Renderer } from "../rendering/Renderer";
 import { ButtonDetector } from "./ButtonDetector";
 import { DirectionalInputMerger } from "./DirectionalInputMerger";
+import { GamepadOptions, GamepadSource } from "./sources/gamepad/GamepadSource";
 import { InputSource, InputType } from "./sources/InputSource";
 import { KeyboardSource } from "./sources/KeyboardSource";
 import { MouseButtonSource } from "./sources/MouseButtonSource";
@@ -12,7 +13,7 @@ import { ScrollSource } from "./sources/ScrollSource";
 import { TouchSource, TouchSourceOptions } from "./sources/TouchSource";
 import { ButtonCombo, Input, InputID, InputSourceSemanticType, VirtualDirectionalInput } from "./types/bindingTypes";
 
-export interface InputManagerOptions<TButton extends InputID, TStick extends InputID, TPointer extends InputID> extends TouchSourceOptions {
+export interface InputManagerOptions<TButton extends InputID, TStick extends InputID, TPointer extends InputID> extends TouchSourceOptions, GamepadOptions {
     buttons?: Record<TButton, ButtonCombo[]>;
     sticks?: Record<TStick, (Input | VirtualDirectionalInput<TButton>)[]>;
     pointers?: Record<TPointer, Input[]>;
@@ -31,7 +32,10 @@ export interface InputEvents<TButton extends InputID, TStick extends InputID, TP
     inputpoint: [TPointer, Vec2];
     /** Runs when a text input key is pressed */
     inputkey: string;
-    // TODO: gamepadconnect and gamepaddisconnect events
+    /** Runs with the index of the gamepad that was connected */
+    gamepadconnected: number;
+    /** Runs with the index of the gamepad that was disconnected */
+    gamepaddisconnected:  number;
 };
 
 /**
@@ -80,6 +84,7 @@ export class InputManager<TButton extends InputID, TStick extends InputID, TPoin
             new ScrollSource(renderer),
             new KeyboardSource(renderer),
             new TouchSource(renderer, options),
+            new GamepadSource(game, options),
         ];
     }
     #buttonBindings: Partial<Record<TButton, ButtonCombo[]>> = {};
@@ -115,7 +120,7 @@ export class InputManager<TButton extends InputID, TStick extends InputID, TPoin
     getPosValue(pointer: TPointer) {
         return this.#directional.positions.get(pointer) ?? V2_ZERO;
     }
-    update() {
+    update(dt: number, width: number, height: number) {
         this.#buttons.reset();
         this.#directional.reset();
         // Feed all the accumulated inputs
@@ -130,18 +135,18 @@ export class InputManager<TButton extends InputID, TStick extends InputID, TPoin
             } = source.poll();
             for (j = 0; j < buttonEvents.length; j++) {
                 const { 0: type, 1: key, 2: value, 3: text } = buttonEvents[j]!;
-                this.lastInputSrc = type;
+                if (type) this.lastInputSrc = type;
                 this.#buttons.send(key, value);
                 if (text) this.#game.emit("inputkey", text);
             }
             for (j = 0; j < directionalEvents.length; j++) {
                 const { 0: type, 1: key, 2: value } = directionalEvents[j]!;
-                this.lastInputSrc = type;
+                if (type) this.lastInputSrc = type;
                 this.#directional.sendDir(key, value);
             }
             for (j = 0; j < pointerEvents.length; j++) {
                 const { 0: type, 1: key, 2: value } = pointerEvents[j]!;
-                this.lastInputSrc = type;
+                if (type) this.lastInputSrc = type;
                 this.#directional.sendPtr(key, value);
             }
         }
@@ -160,6 +165,7 @@ export class InputManager<TButton extends InputID, TStick extends InputID, TPoin
         this.#buttons.values.forEach((value, name) => {
             this.#directional.sendBtn(name, value);
         });
+        // TODO: integrate
         this.#directional.deltas.forEach((value, name) => {
             this.#game.emit("inputdelta", [name, value]);
         });

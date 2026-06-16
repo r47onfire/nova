@@ -17,21 +17,20 @@ export interface TimeControllerOptions {
 export class TimeController {
     #game: Nova;
     #skipping = false;
-    #minDT = 0;
+    #minDT!: number;
     get maxFPS() { return 1 / this.#minDT; }
     set maxFPS(x: number) { this.#minDT = 1 / x; }
-    #maxDT = 0.25;
+    #maxDT!: number;
     get minFPS() { return 1 / this.#maxDT; }
     set minFPS(x: number) { this.#maxDT = 1 / x; }
-    // default = 160 Hz
-    #fixedUpdateDT = 0.00625;
+    #fixedUpdateDT!: number;
     get fixedHz() { return 1 / this.#fixedUpdateDT; }
     set fixedHz(x: number) { this.#fixedUpdateDT = 1 / x; }
     constructor(nova: Nova<any, any, any>, options: TimeControllerOptions) {
         this.#game = nova;
-        if (options.maxFPS) this.maxFPS = options.maxFPS;
-        if (options.minFPS) this.minFPS = options.minFPS;
-        if (options.fixedHz) this.fixedHz = options.fixedHz;
+        this.maxFPS = options.maxFPS ?? Infinity;
+        this.minFPS = options.minFPS ?? 4;
+        this.fixedHz = options.fixedHz ?? 160;
         document.addEventListener("visibilitychange", this.#visibilityListener);
     }
     start(fixedUpdate: (dt: number) => void, update: (dt: number) => void) {

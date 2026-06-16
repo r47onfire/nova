@@ -71,8 +71,9 @@ export default class Nova<TButton extends InputID = InputID, TStick extends Inpu
         throw error;
     }
     #frameMain(dt: number) {
+        const r = this.gfx;
         try {
-            this.input.update();
+            this.input.update(dt, r.width, r.height);
             // Update root object
             this.emit("beforeupdate", dt);
             this.#systems.forEach(pair => pair[1].beforeUpdate(dt));
@@ -80,7 +81,6 @@ export default class Nova<TButton extends InputID = InputID, TStick extends Inpu
             this.#systems.forEach(pair => pair[1].afterUpdate(dt));
             this.emit("afterupdate", dt);
             // Draw
-            const r = this.gfx;
             r.doFrame(() => {
                 this.emit("beforedraw", r);
                 this.#systems.forEach(pair => pair[1].beforeDraw(r));

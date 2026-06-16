@@ -518,4 +518,10 @@ export class Renderer {
             cssPt.y * this.#canvasScaleY * this.#height / viewportHeight,
         );
     }
+    get width() {
+        return this.#width;
+    }
+    get height() {
+        return this.#height;
+    }
 }
