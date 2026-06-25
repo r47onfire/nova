@@ -19,6 +19,12 @@ export class MouseButtonSource extends QueuedHTMLEventInputSource {
             if (m) this.queue(InputType.SCALAR, ["mouse", m, 0]);
         },
         contextmenu: e => e.preventDefault(),
+        pointerdown: e => {
+            this.canvas.setPointerCapture(e.pointerId);
+        },
+        pointerup: e => {
+            this.canvas.releasePointerCapture(e.pointerId);
+        }
     }
     options = {
         [InputType.SCALAR]: MOUSE_BUTTONS,
