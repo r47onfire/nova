@@ -7,14 +7,27 @@ import { WrappedGamepad } from "./WrappedGamepad";
 
 type Strip<P extends string, S extends string> = S extends `${P}${infer U}:${number}` ? U : S extends `${P}${infer U}` ? U : never;
 
+export enum GamepadType {
+    UNKNOWN,
+    PS4,
+    PS5,
+    XBOX,
+    NINTENDO,
+    STEAM,
+}
+
 export type GamepadMapping = {
+    vidPid: [vid: number, pids?: number[]];
+    names: string[];
+    name: string;
+    type: GamepadType;
     buttons: Record<number, Strip<"gamepad/", GamepadButton>>;
     sticks: Partial<Record<Strip<"gamepad/", GamepadStick>, { x: number; y: number }>>;
 };
 
 export interface GamepadOptions {
     gamepadDeadzone?: number;
-    gamepadMappings?: Record<string, GamepadMapping>;
+    gamepadMappings?: GamepadMapping[];
 }
 
 export class GamepadSource extends HTMLEventInputSource {

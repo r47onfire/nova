@@ -5,6 +5,7 @@ import { InputEventEntry, InputType } from "../../InputSource";
 import { GamepadMapping, GamepadOptions } from "../GamepadSource";
 import { WrappedGamepad } from "../WrappedGamepad";
 import { GamepadDriver } from "./GamepadDriver";
+import { extractVidPid } from "./HIDNumbers";
 import { DEFAULT_MAPPING, KNOWN_NON_DEFAULT_MAPPINGS } from "./mappings";
 
 export class WebGamepadAPIDriver extends GamepadDriver {
@@ -12,6 +13,7 @@ export class WebGamepadAPIDriver extends GamepadDriver {
     constructor(gamepad: Gamepad, options: GamepadOptions) {
         super(gamepad, options);
         this.#map = findMapping(gamepad.id, options.gamepadMappings);
+        console.log("web gamepad found mapping for", gamepad.id, this.#map);
     }
     #prevValues = new Map<GamepadButton, number>();
     read(gamepad: WrappedGamepad, values: { [T in InputType]: InputEventEntry<T>[]; }) {
@@ -54,7 +56,23 @@ export class WebGamepadAPIDriver extends GamepadDriver {
     static matches = () => true;
 }
 
-const findMapping = (gamepadID: string, customMappings?: Record<string, GamepadMapping>) => {
-    console.log("finding mapping for id", JSON.stringify(gamepadID));
-    return customMappings?.[gamepadID] ?? KNOWN_NON_DEFAULT_MAPPINGS[gamepadID] ?? DEFAULT_MAPPING;
+const findMapping = (gamepadID: string, customMappings?: GamepadMapping[]) => {
+    return (customMappings && findMappingIn(gamepadID, customMappings)) ?? findMappingIn(gamepadID, KNOWN_NON_DEFAULT_MAPPINGS) ?? DEFAULT_MAPPING;
+};
+
+const findMappingIn = (id: string, mappings: GamepadMapping[]) => {
+    id = id.toLowerCase();
+    for (var mapping of mappings) {
+        if (mappingMatches(id, mapping)) return mapping;
+    }
+    return null;
 }
+
+export const mappingMatches = (id: string, mapping: GamepadMapping) => {
+    const vidPid = extractVidPid(id);
+    const { vidPid: mapVidPid, names } = mapping;
+    if (vidPid && vidPid[0] === mapVidPid[0] && (mapVidPid[1] === undefined || mapVidPid[1].includes(vidPid[1]))) return true;
+    if (names.length && names.some(name => id.includes(name))) return true;
+    return false;
+}
+

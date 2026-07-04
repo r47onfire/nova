@@ -13,7 +13,7 @@ export class WrappedGamepad {
     #drivers: GamepadDriver[];
     deadzone: number;
     constructor(public gamepad: Gamepad, options: GamepadOptions) {
-        this.#drivers = ALL_DRIVERS.flatMap(driverClass => driverClass.matches(gamepad.id) ? [new driverClass(gamepad, options)] : []);
+        this.#drivers = ALL_DRIVERS.flatMap(cls => cls.matches(gamepad.id) ? [new cls(gamepad, options)] : []);
         this.deadzone = options.gamepadDeadzone ?? 0.1;
     }
     poll() {

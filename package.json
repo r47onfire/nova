@@ -1,6 +1,7 @@
 {
     "name": "@r47onfire/nova",
     "private": true,
+    "sideEffects": false,
     "version": "0.1.0",
     "description": "A versatile browser-first game engine with tons of cool features",
     "main": "src/index.ts",

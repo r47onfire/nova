@@ -1,7 +1,12 @@
-import { GamepadMapping } from "../GamepadSource";
+import { GamepadMapping, GamepadType } from "../GamepadSource";
+import { HIDAssignedNumber } from "./HIDNumbers";
 
 
 export const DEFAULT_MAPPING: GamepadMapping = {
+    vidPid: [0],
+    names: [],
+    name: "Standard Gamepad",
+    type: GamepadType.UNKNOWN,
     buttons: {
         0: "south",
         1: "east",
@@ -27,38 +32,102 @@ export const DEFAULT_MAPPING: GamepadMapping = {
     }
 };
 
-// This is basically copied from kaplay
-// TODO: rewrite this to use regexes or test functions because chrome doesn't include VID/PID anymore in the ID for privacy (kaplayjs/kaplay#1110)
+export const DUALSENSE_MAPPING: GamepadMapping = {
+    vidPid: [HIDAssignedNumber.VID_SONY, [HIDAssignedNumber.PID_DUALSENSE]],
+    names: ["dualsense"],
+    type: GamepadType.PS5,
+    name: "DualSense",
+    buttons: {
+        ...DEFAULT_MAPPING.buttons,
+        17: "touchpad"
+    },
+    sticks: DEFAULT_MAPPING.sticks
+}
 
-const JOYCON_BOTH_ID = "Joy-Con L+R (STANDARD GAMEPAD Vendor: 057e Product: 200e)";
-const JOYCON_LEFT_ID = "Joy-Con (L) (STANDARD GAMEPAD Vendor: 057e Product: 2006)";
-const JOYCON_RIGHT_ID = "Joy-Con (R) (STANDARD GAMEPAD Vendor: 057e Product: 2007)";
-const SWITCH_PRO_ID = "Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)";
-export const DS5_ID = "DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)";
-
-export const KNOWN_NON_DEFAULT_MAPPINGS: Record<string, GamepadMapping> = {
-    [JOYCON_BOTH_ID]: {
+export const KNOWN_NON_DEFAULT_MAPPINGS: GamepadMapping[] = [
+    {
+        vidPid: [HIDAssignedNumber.VID_NINTENDO, [HIDAssignedNumber.PID_JOYCON_BOTH]],
+        names: ["joy-con l+r"],
+        type: GamepadType.NINTENDO,
+        name: "Joy-Con (L+R)",
         buttons: {
             ...DEFAULT_MAPPING.buttons,
             17: "capture"
         },
         sticks: DEFAULT_MAPPING.sticks
     },
-    [SWITCH_PRO_ID]: {
+    {
+        vidPid: [HIDAssignedNumber.VID_MICROSOFT],
+        names: ["xbox"],
+        type: GamepadType.XBOX,
+        name: "Xbox Controller",
+        buttons: DEFAULT_MAPPING.buttons,
+        sticks: DEFAULT_MAPPING.sticks
+    },
+    {
+        vidPid: [HIDAssignedNumber.VID_VALVE, [HIDAssignedNumber.PID_STEAM_DECK_EMBEDDED]],
+        names: ["steam"],
+        type: GamepadType.STEAM,
+        name: "Steam Deck",
+        buttons: DEFAULT_MAPPING.buttons, // ???? there is probably more!
+        sticks: DEFAULT_MAPPING.sticks
+    },
+    {
+        vidPid: [HIDAssignedNumber.VID_VALVE, [HIDAssignedNumber.PID_STEAM_CONTROLLER_2026_PUCK]],
+        names: ["steam"],
+        type: GamepadType.STEAM,
+        name: "Steam Controller (2026)",
+        buttons: DEFAULT_MAPPING.buttons, // ???? there is probably more!
+        sticks: DEFAULT_MAPPING.sticks
+    },
+    {
+        vidPid: [HIDAssignedNumber.VID_VALVE],
+        names: ["steam"],
+        type: GamepadType.STEAM,
+        name: "Steam Controller",
+        buttons: DEFAULT_MAPPING.buttons, // ???? there is probably more!
+        sticks: DEFAULT_MAPPING.sticks
+    },
+    {
+        vidPid: [HIDAssignedNumber.VID_NINTENDO, [HIDAssignedNumber.PID_SWITCH_PRO_CONTROLLER]],
+        names: ["pro controller"],
+        type: GamepadType.NINTENDO,
+        name: "Switch Pro Controller",
         buttons: {
             ...DEFAULT_MAPPING.buttons,
             17: "capture"
         },
         sticks: DEFAULT_MAPPING.sticks
     },
-    [DS5_ID]: {
+    {
+        vidPid: [HIDAssignedNumber.VID_SONY, [HIDAssignedNumber.PID_DUALSENSE_EDGE]],
+        names: ["dualsense edge"],
+        type: GamepadType.PS5,
+        name: "DualSense Edge",
+        buttons: {
+            ...DEFAULT_MAPPING.buttons,
+            17: "touchpad",
+            // ??? there may be more?
+        },
+        sticks: DEFAULT_MAPPING.sticks
+    },
+    DUALSENSE_MAPPING,
+    {
+        vidPid: [HIDAssignedNumber.VID_SONY, [HIDAssignedNumber.PID_DUALSHOCK_4_A, HIDAssignedNumber.PID_DUALSHOCK_4_B]],
+        names: [],
+        type: GamepadType.PS4,
+        name: "DualShock 4",
         buttons: {
             ...DEFAULT_MAPPING.buttons,
             17: "touchpad"
         },
         sticks: DEFAULT_MAPPING.sticks
     },
-    [JOYCON_LEFT_ID]: {
+    {
+        vidPid: [HIDAssignedNumber.VID_NINTENDO, [HIDAssignedNumber.PID_LEFT_JOYCON]],
+        names: ["joy-con (l)"],
+        type: GamepadType.NINTENDO,
+        name: "Joy-Con (L)",
         buttons: {
             0: "south",
             1: "east",
@@ -74,7 +143,11 @@ export const KNOWN_NON_DEFAULT_MAPPINGS: Record<string, GamepadMapping> = {
             left: { x: 0, y: 1 }
         }
     },
-    [JOYCON_RIGHT_ID]: {
+    {
+        vidPid: [HIDAssignedNumber.VID_NINTENDO, [HIDAssignedNumber.PID_RIGHT_JOYCON]],
+        names: ["joy-con (r)"],
+        type: GamepadType.NINTENDO,
+        name: "Joy-Con (R)",
         buttons: {
             0: "south",
             1: "east",
@@ -90,4 +163,4 @@ export const KNOWN_NON_DEFAULT_MAPPINGS: Record<string, GamepadMapping> = {
             left: { x: 0, y: 1 }
         }
     },
-}
+];
