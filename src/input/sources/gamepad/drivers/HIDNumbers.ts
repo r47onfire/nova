@@ -12,8 +12,10 @@ export enum HIDAssignedNumber {
     PID_RIGHT_JOYCON = 0x2007,
     VID_VALVE = 0x28DE,
     PID_STEAM_DECK_EMBEDDED = 0x1205,
-    // TODO: get IDs for 2026 steam controller over bluetooth?
+    PID_STEAM_CONTROLLER_2026_USB = 0x1302,
+    PID_STEAM_CONTROLLER_2026_BLUETOOTH = 0x1303,
     PID_STEAM_CONTROLLER_2026_PUCK = 0x1304,
+    PID_STEAM_CONTROLLER_2026_NEREID = 0x1305,
 }
 
 export const extractVidPid = (id: string): [vid: number, pid: number] | null => {

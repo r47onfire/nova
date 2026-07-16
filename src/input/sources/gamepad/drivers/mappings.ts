@@ -73,7 +73,7 @@ export const KNOWN_NON_DEFAULT_MAPPINGS: GamepadMapping[] = [
         sticks: DEFAULT_MAPPING.sticks
     },
     {
-        vidPid: [HIDAssignedNumber.VID_VALVE, [HIDAssignedNumber.PID_STEAM_CONTROLLER_2026_PUCK]],
+        vidPid: [HIDAssignedNumber.VID_VALVE, [HIDAssignedNumber.PID_STEAM_CONTROLLER_2026_BLUETOOTH, HIDAssignedNumber.PID_STEAM_CONTROLLER_2026_PUCK, HIDAssignedNumber.PID_STEAM_CONTROLLER_2026_USB, HIDAssignedNumber.PID_STEAM_CONTROLLER_2026_NEREID]],
         names: ["steam"],
         type: GamepadType.STEAM,
         name: "Steam Controller (2026)",
