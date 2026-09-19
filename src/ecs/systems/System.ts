@@ -1,5 +1,5 @@
+import { EventSubscriptionController } from "@r47onfire/game-math";
 import Nova from "../..";
-import { EventSubscriptionController } from "../../events";
 import { Renderer } from "../../rendering/Renderer";
 import { CompID } from "../components/Comp";
 import { GameObj } from "../entity/GameObjType";
@@ -23,16 +23,8 @@ export abstract class ComponentSystem<T> extends System {
         this.#compID = component;
     }
     init(game: Nova) {
-        this.#eventHandlers.push(game.on("use", pair => {
-            if (pair[1] === this.#compID) {
-                this.add(pair[0] as GameObj<T>);
-            }
-        }));
-        this.#eventHandlers.push(game.on("unuse", pair => {
-            if (pair[1] === this.#compID) {
-                this.remove(pair[0] as GameObj<T>);
-            }
-        }));
+        this.#eventHandlers.push(game.onF("use", this.#compID, obj => this.add(obj as GameObj<T>)));
+        this.#eventHandlers.push(game.onF("unuse", this.#compID, obj => this.remove(obj as GameObj<T>)));
     }
     destroy() {
         while (this.#eventHandlers.length) this.#eventHandlers.pop()!.stop();

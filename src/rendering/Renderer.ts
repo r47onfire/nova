@@ -26,7 +26,7 @@ export interface RendererOptions {
      */
     pixelDensity?: number;
     /**
-     * The number of times to scale down the screen, for pixel art style rendering. This is applied on top of the pixel density, so a scale of 2 with a pixel density of 2 would make each CSS pixel equal to 4x4 screen pixels.
+     * The number of times to scale down the screen, for pixel art style rendering. This is applied on top of the pixel density, so a scale of 2 with a pixel density of 2 would make each game pixel equal to 4x4 screen pixels.
      *
      * @default 1
      */

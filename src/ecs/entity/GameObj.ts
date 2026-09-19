@@ -1,8 +1,7 @@
-import { Color, Mat23, Mat23_copyFrom, Mat23_getRotation, Mat23_getScale, Mat23_inverse, Mat23_rotateSelf, Mat23_scaleSelfV, Mat23_skewSelfV, Mat23_transformPointV_m, Mat23_translateSelfV, Vec2, Vec2_copy, Vec2_invScale, Vec2_scale_m } from "@r47onfire/game-math";
+import { Color, EventDispatcher, EventSubscriptionController, Mat23, Mat23_copyFrom, Mat23_getRotation, Mat23_getScale, Mat23_inverse, Mat23_rotateSelf, Mat23_scaleSelfV, Mat23_skewSelfV, Mat23_transformPointV_m, Mat23_translateSelfV, Vec2, Vec2_copy, Vec2_invScale, Vec2_scale_m } from "@r47onfire/game-math";
 import { isArray, last } from "lib0/array";
 import { stringify } from "lib0/json";
 import Nova from "../..";
-import { EventDispatcher, EventSubscriptionController } from "../../events";
 import { Renderer } from "../../rendering/Renderer";
 import { RenderModifiers } from "../../rendering/RenderModifiers";
 import { BlendMode } from "../../rendering/Shader";
@@ -17,7 +16,7 @@ export type Tag = `#${string}:${string}`;
 
 var id = 1;
 
-export class GameObjRaw extends EventDispatcher<GameObjEvents> {
+export class GameObjRaw extends EventDispatcher<GameObjEvents, GameObjRaw> {
     /**
      * The unique id of the game object. Will be null if the object is destroyed
      * (e.g. {@link destroy()} has been called).
@@ -32,7 +31,7 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
         comps: Comp[],
         tags: Tag[],
     ) {
-        super();
+        super(owner => owner.isPaused());
         this.GAME = game;
         this.id = id;
         this.parent = parent;
@@ -548,10 +547,11 @@ export class GameObjRaw extends EventDispatcher<GameObjEvents> {
      * @param event - The event name.
      * @param action - The action to run when event is triggered.
      */
-    on<N extends keyof GameObjEvents>(name: N, action: (arg: GameObjEvents[N]) => void): EventSubscriptionController {
+    on<N extends keyof GameObjEvents>(name: N, action: (arg: GameObjEvents[N]) => void): EventSubscriptionController<this> {
         const c = super.on(name, action.bind(this));
+        c.owner = this;
         last(this.#onCurrentCompCleanups)?.(c.stop);
-        return c;
+        return c as EventSubscriptionController<this>;
     }
     emit<N extends keyof GameObjEvents>(name: N & (GameObjEvents[N] extends void ? N : never)): void;
     emit<N extends keyof GameObjEvents>(name: N, arg: GameObjEvents[N]): void;

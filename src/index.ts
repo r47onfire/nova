@@ -1,10 +1,9 @@
-import { COLOR_BLUE } from "@r47onfire/game-math";
+import { COLOR_BLUE, EventDispatcher } from "@r47onfire/game-math";
 import { GameObjRaw } from "./ecs/entity/GameObj";
 import { GameObjEvents } from "./ecs/entity/GameObjEvents";
 import { GameObj } from "./ecs/entity/GameObjType";
 import { GameObjVersionManager, TRANSFORM_VERSION_MANAGER_SYMBOL } from "./ecs/entity/VersionManager";
 import { System } from "./ecs/systems/System";
-import { EventDispatcher } from "./events";
 import { InputEvents, InputManager, InputManagerOptions } from "./input/InputManager";
 import { InputID } from "./input/types/bindingTypes";
 import { TimeController, TimeControllerEvents, TimeControllerOptions } from "./loop/TimeController";
@@ -31,7 +30,7 @@ export interface GlobalEvents<TButton extends InputID, TStick extends InputID, T
     afterfixedtick: number;
 }
 
-type WithObject<T> = { [K in keyof T]: [GameObj, T[K]] };
+type WithObject<T> = { [K in keyof T]: [T[K], GameObj] };
 
 export default class Nova<TButton extends InputID = InputID, TStick extends InputID = InputID, TPointer extends InputID = InputID> extends EventDispatcher<GlobalEvents<TButton, TStick, TPointer>> {
     readonly gfx: Renderer;
@@ -124,9 +123,12 @@ export default class Nova<TButton extends InputID = InputID, TStick extends Inpu
         }
     }
     system(name: string, implementation: System) {
-
         const index = this.#systems.findIndex(i => i[0] === name);
         if (index < 0) this.#systems.push([name, implementation]);
-        else this.#systems[index]![1] = implementation;
+        else {
+            this.#systems[index]![1].destroy();
+            this.#systems[index]![1] = implementation;
+        }
+        implementation.init(this as any);
     }
 }
